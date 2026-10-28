@@ -1,0 +1,34 @@
+{
+  "name": "kompo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "format": "prettier --write src e2e e2e-pages scripts .github *.ts *.json index.html README.md",
+    "preview": "vite preview --host 127.0.0.1",
+    "preview:pages": "node scripts/preview-pages.mjs",
+    "test:pages": "playwright test --config=playwright.pages.config.ts"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "prettier": "^3.9.10",
+    "typescript": "~5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  }
+}
