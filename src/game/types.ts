@@ -1,3 +1,4 @@
+import type { Teaching } from "./education";
 export type ChapterId = "alignment" | "repetition" | "rhythm";
 export type Shape = {
   id: string;
@@ -44,6 +45,7 @@ export type Level = {
   chapter: ChapterId;
   title: string;
   objective: string;
+  teaching: Teaching;
   instructions: string;
   frame: Frame;
   shapes: Shape[];

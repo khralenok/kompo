@@ -1,3 +1,4 @@
+import { teachingFor } from "./education";
 import type { ChapterId, Level, Rule, Shape } from "./types";
 export const colors = {
   red: "#D12F26",
@@ -103,6 +104,7 @@ function level(
     chapter,
     title,
     objective,
+    teaching: teachingFor(chapter, n),
     instructions:
       "Drag the colored pieces. Black pieces with a small dot are fixed. Check when the relationships feel right.",
     frame,

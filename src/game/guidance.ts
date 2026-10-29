@@ -73,3 +73,20 @@ export function assistPosition(
   }
   return result;
 }
+
+// A guide attracts an approaching form but never resists a tap/hold away from it.
+export function settleControllerPosition(
+  level: Level,
+  shape: Shape,
+  start: Shape,
+) {
+  const snapped = assistPosition(level, shape, shape.x, shape.y);
+  for (const axis of ["x", "y"] as const) {
+    if (
+      Math.abs(shape[axis] - snapped[axis]) >=
+      Math.abs(start[axis] - snapped[axis])
+    )
+      snapped[axis] = shape[axis];
+  }
+  return snapped;
+}

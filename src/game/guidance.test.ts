@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { levels } from "./levels";
-import { assistPosition, hintTargets } from "./guidance";
+import {
+  assistPosition,
+  hintTargets,
+  settleControllerPosition,
+} from "./guidance";
 import { validate } from "./validation";
 
 describe("Visual hint assistance", () => {
@@ -64,4 +68,15 @@ describe("Visual hint assistance", () => {
       ).not.toMatch(/\bunits?\b|[xy] = \d/);
     }
   });
+});
+
+it("controller hints attract approaching moves without resisting moves away", () => {
+  const level = levels[0];
+  const shape = { ...level.shapes[1], x: 593, y: 300 };
+  expect(settleControllerPosition(level, shape, { ...shape, x: 590 }).x).toBe(
+    593,
+  );
+  expect(settleControllerPosition(level, shape, { ...shape, x: 596 }).x).toBe(
+    590,
+  );
 });

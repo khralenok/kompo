@@ -4,6 +4,7 @@ import App from "./App";
 import "../color-system.css";
 import "./fonts.css";
 import "./styles.css";
+import "./workspace.css";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />

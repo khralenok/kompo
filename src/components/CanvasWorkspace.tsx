@@ -2,116 +2,47 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import type { ReactNode, RefObject } from "react";
 import { Canvas } from "./Canvas";
 import { Icon } from "./Icon";
-import { anchor, validate } from "../game/validation";
+import { ThumbController } from "./ThumbController";
+import { validate } from "../game/validation";
+import { settleControllerPosition } from "../game/guidance";
+import { constrainPosition } from "../game/movement";
+import {
+  readDraft,
+  readLearning,
+  recordLearning,
+  saveDraft,
+} from "../game/session";
+import type { InputMode } from "../game/session";
 import type { Level, Shape, ValidationResult } from "../game/types";
-
-export type CanvasWorkspaceHandle = { reset: () => void; complete: () => void };
+export type CanvasWorkspaceHandle = {
+  reset: () => void;
+  complete: () => void;
+  replayGuidance: () => void;
+};
 type Props = {
   level: Level;
+  layoutKey: number;
   nextLabel: string;
   onNext: () => void;
+  onInfo: () => void;
   onComplete: () => void;
-  onShapesChange: (shapes: Shape[]) => void;
+  onShapesChange: (s: Shape[]) => void;
   debugGuides?: boolean;
   storageError?: boolean;
 };
-
-// Keep the popup away from the composition. If every corner is occupied (or the
-// screen is narrow), dock it inside the workspace below the frame instead.
-function CanvasNotice({
-  level,
-  shapes,
-  children,
-  bodyRef,
-}: {
-  level: Level;
-  shapes: Shape[];
-  children: ReactNode;
-  bodyRef: RefObject<HTMLDivElement | null>;
-}) {
-  const card = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
-  useLayoutEffect(() => {
-    const body = bodyRef.current;
-    const node = card.current;
-    if (!body || !node) return;
-    function place() {
-      const bodyBox = body!.getBoundingClientRect();
-      const svg = body!.querySelector("svg.puzzle-svg") as SVGSVGElement | null;
-      const matrix = svg?.getScreenCTM();
-      if (!matrix) return;
-      const stageHeight = body!
-        .querySelector(".composition-stage")!
-        .getBoundingClientRect().height;
-      const w = node!.offsetWidth;
-      const h = node!.offsetHeight;
-      if (bodyBox.width < 620) {
-        setPosition(null);
-        return;
-      }
-      const candidates = [
-        { left: 14, top: 14 },
-        { left: bodyBox.width - w - 14, top: 14 },
-        { left: 14, top: stageHeight - h - 14 },
-        { left: bodyBox.width - w - 14, top: stageHeight - h - 14 },
-      ];
-      const free = candidates.find(
-        (p) =>
-          p.left >= 0 &&
-          p.top >= 0 &&
-          shapes.every((s) => {
-            const a = new DOMPoint(
-              anchor(s, "left"),
-              anchor(s, "top"),
-            ).matrixTransform(matrix);
-            const b = new DOMPoint(
-              anchor(s, "right"),
-              anchor(s, "bottom"),
-            ).matrixTransform(matrix);
-            return (
-              p.left + w < a.x - bodyBox.x - 14 ||
-              p.left > b.x - bodyBox.x + 14 ||
-              p.top + h < a.y - bodyBox.y - 14 ||
-              p.top > b.y - bodyBox.y + 28
-            );
-          }),
-      );
-      setPosition(free ?? null);
-    }
-    place();
-    const observer = new ResizeObserver(place);
-    observer.observe(body);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [level, shapes, children, bodyRef]);
-  return (
-    <div
-      className={`canvas-notice-layer ${position ? "floating" : "docked"}`}
-      style={position ? { left: position.left, top: position.top } : undefined}
-    >
-      <div ref={card} className="canvas-notice">
-        {children}
-      </div>
-    </div>
-  );
-}
-
 export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
   function CanvasWorkspace(
     {
       level,
+      layoutKey,
       nextLabel,
       onNext,
+      onInfo,
       onComplete,
       onShapesChange,
       debugGuides = false,
@@ -119,24 +50,123 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
     },
     ref,
   ) {
-    const [shapes, setShapes] = useState(() =>
-      level.shapes.map((s) => ({ ...s })),
+    const [shapes, setShapes] = useState(() => readDraft(level));
+    const [mode, setMode] = useState<InputMode>(() =>
+      navigator.maxTouchPoints > 0 && matchMedia("(pointer: coarse)").matches
+        ? "touch"
+        : "mouse",
     );
+    const [selected, setSelected] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<ValidationResult | null>(null);
     const [dismissed, setDismissed] = useState(false);
     const [hint, setHint] = useState(false);
+    const [guideGuides, setGuideGuides] = useState(true);
     const [hintMessage, setHintMessage] = useState(false);
-    const body = useRef<HTMLDivElement>(null);
+    const [guideActive, setGuideActive] = useState(() => {
+      const l = readLearning();
+      return (
+        !l.lessons.includes(level.id) ||
+        !l.controls.includes(
+          navigator.maxTouchPoints > 0 &&
+            matchMedia("(pointer: coarse)").matches
+            ? "touch"
+            : "mouse",
+        )
+      );
+    });
+    const [step, setStep] = useState<"select" | "move" | "check">(() =>
+      readLearning().controls.includes(
+        navigator.maxTouchPoints > 0 && matchMedia("(pointer: coarse)").matches
+          ? "touch"
+          : "mouse",
+      )
+        ? "check"
+        : "select",
+    );
+    const [localStorageError, setLocalStorageError] = useState(false);
+    const [storageDismissed, setStorageDismissed] = useState(false);
+    const controllerStart = useRef<Shape | null>(null);
+    const selectedAt = useRef<{ x: number; y: number } | null>(null);
     const toolbar = useRef<HTMLDivElement>(null);
-    const noticeShown = (!dismissed && feedback !== null) || hintMessage;
+    const shapeRef = useRef(shapes);
+    shapeRef.current = shapes;
     const successful = feedback?.success === true;
     useEffect(() => onShapesChange(shapes), [shapes, onShapesChange]);
-    function reset() {
-      setShapes(level.shapes.map((s) => ({ ...s })));
+    useEffect(() => {
+      const timer = setTimeout(() => {
+        if (!saveDraft(level, shapes)) setLocalStorageError(true);
+      }, 180);
+      return () => clearTimeout(timer);
+    }, [level, shapes]);
+    useEffect(() => {
+      const flush = () => saveDraft(level, shapeRef.current);
+      window.addEventListener("pagehide", flush);
+      return () => {
+        flush();
+        window.removeEventListener("pagehide", flush);
+      };
+    }, [level]);
+    function stale() {
       setFeedback(null);
       setDismissed(false);
+      setHintMessage(false);
+    }
+    function update(next: Shape[]) {
+      setShapes(next);
+      stale();
+      if (guideActive && step === "move" && selectedAt.current) {
+        const focus = next.find((s) => s.id === level.teaching.focusId)!;
+        if (
+          Math.hypot(
+            focus.x - selectedAt.current.x,
+            focus.y - selectedAt.current.y,
+          ) >= 3
+        )
+          setStep("check");
+      }
+    }
+    function select(id: string, input?: InputMode) {
+      if (id !== selected) controllerStart.current = null;
+      if (input) {
+        setMode(input);
+        if (!readLearning().controls.includes(input) && !guideActive) {
+          setGuideActive(true);
+          if (id === level.teaching.focusId) {
+            const s = shapeRef.current.find((s) => s.id === id)!;
+            selectedAt.current = { x: s.x, y: s.y };
+            setStep("move");
+          } else setStep("select");
+        }
+      }
+      setSelected(id);
+      if (guideActive && step === "select" && id === level.teaching.focusId) {
+        const s = shapeRef.current.find((s) => s.id === id)!;
+        selectedAt.current = { x: s.x, y: s.y };
+        setStep("move");
+      }
+    }
+    function acknowledge() {
+      if (!recordLearning(level.id, mode)) setLocalStorageError(true);
+      setGuideActive(false);
+    }
+    function replayGuidance() {
+      setGuideActive(true);
+      setGuideGuides(true);
+      setStep("select");
+      setSelected(null);
+      setFeedback(null);
+      setHintMessage(false);
+      setDismissed(false);
+    }
+    function reset() {
+      controllerStart.current = null;
+      setShapes(level.shapes.map((s) => ({ ...s })));
+      setSelected(null);
+      stale();
       setHint(false);
       setHintMessage(false);
+      if (guideActive)
+        setStep(readLearning().controls.includes(mode) ? "check" : "select");
     }
     function check(bypass = false) {
       const result = bypass
@@ -145,35 +175,51 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
       setFeedback(result);
       setDismissed(false);
       setHintMessage(false);
-      if (result.success && !successful) onComplete();
+      if (result.success && !successful) {
+        if (!bypass) acknowledge();
+        onComplete();
+      }
     }
-    useImperativeHandle(ref, () => ({ reset, complete: () => check(true) }));
+    useImperativeHandle(ref, () => ({
+      reset,
+      complete: () => check(true),
+      replayGuidance,
+    }));
     function dismiss() {
+      setStorageDismissed(true);
       setDismissed(true);
       setHintMessage(false);
       toolbar.current
         ?.querySelector<HTMLButtonElement>(".canvas-check")
         ?.focus({ preventScroll: true });
     }
-    function update(next: Shape[]) {
-      setShapes(next);
-      setFeedback(null);
-      setDismissed(false);
-      setHintMessage(false);
+    function move(dx: number, dy: number) {
+      if (!selected || successful) return;
+      if (!controllerStart.current)
+        controllerStart.current =
+          shapeRef.current.find((s) => s.id === selected) ?? null;
+      const next = shapeRef.current.map((s) =>
+        s.id === selected
+          ? constrainPosition(s, s.x + dx, s.y + dy, level.frame)
+          : s,
+      );
+      shapeRef.current = next;
+      update(next);
     }
-    function toggleHint() {
-      setHint(!hint);
-      setHintMessage(!hint);
-      setDismissed(true);
+    function release() {
+      const start = controllerStart.current;
+      controllerStart.current = null;
+      if (!hint || !selected || successful || !start) return;
+      const next = shapeRef.current.map((s) => {
+        if (s.id !== selected) return s;
+        const p = settleControllerPosition(level, s, start);
+        return constrainPosition(s, p.x, p.y, level.frame);
+      });
+      shapeRef.current = next;
+      update(next);
     }
     const message = feedback && !dismissed ? feedback : null;
-    const title = message
-      ? message.success
-        ? "RELATIONSHIP FOUND"
-        : "LOOK AGAIN"
-      : "A WAY TO SEE IT";
-    // An explicit piece reference lets any validator point at a form without
-    // coupling the workspace to a particular validation algorithm.
+    const notice = message !== null || hintMessage;
     const relatedIds =
       message && !message.success
         ? shapes
@@ -181,81 +227,196 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
               new RegExp(`\\bpiece ${s.id}\\b`, "i").test(message.message),
             )
             .map((s) => s.id)
-        : [];
+        : guideActive && step !== "check"
+          ? [level.teaching.focusId]
+          : [];
+    const focus = level.shapes.find((s) => s.id === level.teaching.focusId)!;
+    const guidance =
+      step === "select"
+        ? `Select form ${focus.id}, the ${focus.fill === "#D8AF58" ? "ochre" : "red"} ${focus.type === "rectangle" && focus.width === focus.height ? "square" : focus.type}.`
+        : step === "move"
+          ? mode === "touch"
+            ? "Tap the thumb pad to nudge. Hold an arrow to keep moving."
+            : "Drag the selected form, or use the arrow keys to move it."
+          : level.teaching.prompt;
+    const storageWarning =
+      (storageError || localStorageError) && !storageDismissed;
+    const hasStatus = notice || (guideActive && !successful) || storageWarning;
     return (
       <section
-        className="canvas-section canvas-workspace"
+        className={`canvas-section canvas-workspace ${mode === "touch" ? "touch-workspace" : ""}`}
         aria-label="Interactive composition canvas"
+        data-guide-step={guideActive ? step : undefined}
         onKeyDown={(e) => {
-          if (e.key === "Escape" && noticeShown) {
+          if (e.key === "Escape" && hasStatus) {
             e.preventDefault();
-            dismiss();
+            if (notice) dismiss();
+            else {
+              setGuideActive(false);
+              setStorageDismissed(true);
+            }
           }
         }}
       >
-        <div className="canvas-top">
-          <span>{level.title}</span>
-          <span className="canvas-status">
-            {successful && <Icon name="check_circle_outline" />}
-            {successful ? "COMPOSITION COMPLETE" : "DRAG TO ARRANGE"}
-          </span>
-        </div>
-        <div
-          ref={toolbar}
-          className="canvas-toolbar"
-          role="toolbar"
-          aria-label="Canvas controls"
-        >
-          <div className="canvas-tools">
-            <button onClick={reset}>
-              <Icon name="replay" />
-              Reset
-            </button>
-            <button aria-pressed={hint} onClick={toggleHint}>
-              <Icon name={hint ? "close" : "lightbulb_outline"} />
-              {hint ? "Hide hint" : "Show hint"}
-            </button>
-          </div>
-          <button
-            className="primary canvas-check"
-            onClick={successful ? onNext : () => check()}
-          >
-            {successful ? nextLabel : "Check composition"}
-          </button>
-        </div>
-        <div className="canvas-body" ref={body}>
+        <div className="canvas-body">
           <div className="composition-stage">
             <Canvas
               level={level}
+              layoutKey={layoutKey}
               shapes={shapes}
               onChange={update}
-              guides={hint || debugGuides}
+              guides={
+                hint ||
+                debugGuides ||
+                (guideActive && step === "check" && guideGuides)
+              }
               assist={hint}
               disabled={successful}
               highlightedIds={relatedIds}
+              selectedId={selected}
+              onSelect={select}
+              onTouch={() => setMode("touch")}
             />
           </div>
-          <div
-            className="canvas-announcements"
-            aria-live="polite"
-            aria-atomic="true"
+        </div>
+        <div
+          className="canvas-toolbar"
+          ref={toolbar}
+          role="toolbar"
+          aria-label="Canvas controls"
+          aria-orientation="horizontal"
+          onKeyDown={(e) => {
+            const keys = ["ArrowLeft", "ArrowRight"];
+            if (![...keys, "Home", "End"].includes(e.key)) return;
+            const buttons = [
+              ...e.currentTarget.querySelectorAll<HTMLButtonElement>(
+                "button:not(:disabled)",
+              ),
+            ];
+            const i = buttons.indexOf(
+              document.activeElement as HTMLButtonElement,
+            );
+            const next =
+              e.key === "Home"
+                ? 0
+                : e.key === "End"
+                  ? buttons.length - 1
+                  : (i + (e.key === keys[0] ? -1 : 1) + buttons.length) %
+                    buttons.length;
+            e.preventDefault();
+            buttons[next]?.focus();
+          }}
+        >
+          <button
+            className="tool-button"
+            onClick={reset}
+            aria-label="Reset"
+            data-tooltip="Reset"
           >
-            {noticeShown && (
-              <CanvasNotice level={level} shapes={shapes} bodyRef={body}>
-                <div
-                  className={`${message ? "feedback" : "hint"} ${message?.success ? "success" : ""}`}
-                >
+            <Icon name="replay" />
+          </button>
+          <button
+            className="tool-button"
+            aria-label={hint ? "Hide hint" : "Show hint"}
+            data-tooltip={hint ? "Hide hint" : "Show hint"}
+            aria-pressed={hint}
+            onClick={() => {
+              setGuideGuides(false);
+              setHint(!hint);
+              setHintMessage(!hint);
+              setDismissed(true);
+            }}
+          >
+            <Icon name="lightbulb_outline" />
+          </button>
+          <button
+            className="tool-button"
+            onClick={onInfo}
+            aria-label="About this principle"
+            data-tooltip="Lesson info"
+          >
+            <Icon name="info_outline" />
+          </button>
+          <span className="tool-divider" aria-hidden="true" />
+          <button
+            className="primary canvas-check"
+            aria-label={successful ? nextLabel : "Check composition"}
+            data-tooltip={successful ? nextLabel : "Check composition"}
+            onClick={successful ? onNext : () => check()}
+          >
+            <Icon
+              name={
+                successful
+                  ? nextLabel === "All studies"
+                    ? "menu"
+                    : "arrow_forward"
+                  : "check_circle_outline"
+              }
+            />
+          </button>
+        </div>
+        <div
+          className="workspace-announcements"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {hasStatus && (
+            <div
+              className="workspace-message-area"
+              tabIndex={0}
+              role="region"
+              aria-label="Exercise guidance and feedback"
+            >
+              <div className="canvas-notice">
+                {notice ? (
+                  <div
+                    className={`${message ? "feedback" : "hint"} ${message?.success ? "success" : ""}`}
+                  >
+                    <div className="canvas-notice-heading">
+                      <span className="eyebrow">
+                        <Icon
+                          name={
+                            message?.success
+                              ? "check_circle_outline"
+                              : "lightbulb_outline"
+                          }
+                        />
+                        {message
+                          ? message.success
+                            ? "RELATIONSHIP FOUND"
+                            : "LOOK AGAIN"
+                          : "A WAY TO SEE IT"}
+                      </span>
+                      <button
+                        className="canvas-dismiss"
+                        aria-label="Dismiss canvas message"
+                        onClick={dismiss}
+                      >
+                        <Icon name="close" />
+                      </button>
+                    </div>
+                    <p>{message?.message ?? level.hint}</p>
+                  </div>
+                ) : guideActive && !successful ? (
+                  <div
+                    className="onboarding"
+                    aria-label="Lesson guidance"
+                    data-step={step}
+                  >
+                    <div className="canvas-notice-heading">
+                      <span className="eyebrow">
+                        {step === "check" ? "THE PRINCIPLE" : "GETTING STARTED"}
+                      </span>
+                      <button className="skip-guidance" onClick={acknowledge}>
+                        Skip guidance
+                      </button>
+                    </div>
+                    <p className="teaching-concept">{level.teaching.concept}</p>
+                    <p className="guide-action">{guidance}</p>
+                  </div>
+                ) : (
                   <div className="canvas-notice-heading">
-                    <span className="eyebrow">
-                      <Icon
-                        name={
-                          message?.success
-                            ? "check_circle_outline"
-                            : "lightbulb_outline"
-                        }
-                      />
-                      {title}
-                    </span>
+                    <span className="eyebrow">SAVING PROGRESS</span>
                     <button
                       className="canvas-dismiss"
                       aria-label="Dismiss canvas message"
@@ -264,35 +425,23 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
                       <Icon name="close" />
                     </button>
                   </div>
-                  <p>{message?.message ?? level.hint}</p>
-                  {!message && (
-                    <p className="hint-instructions">
-                      Dashed outlines show where to aim. Pieces gently snap near
-                      a guide.
-                    </p>
-                  )}
-                </div>
-              </CanvasNotice>
-            )}
-          </div>
+                )}
+                {storageWarning && (
+                  <p className="storage-warning">
+                    Progress is available for this session.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-        <div className="canvas-bottom">
-          <span>
-            <i className="legend-dot fixed" /> FIXED FORM{" "}
-            <i className="legend-dot moving" /> MOVABLE FORM
-          </span>
-          <span>
-            {level.frame.width} × {level.frame.height}
-          </span>
-        </div>
-        <div className="canvas-help">
-          Drag colored forms. Tab to a form and use arrow keys to move it. Shift
-          makes larger steps.
-        </div>
-        {storageError && (
-          <p className="canvas-storage quiet" role="status">
-            Progress is saved for this session. Browser storage is unavailable.
-          </p>
+        {mode === "touch" && (
+          <ThumbController
+            selectedId={selected}
+            disabled={successful}
+            onMove={move}
+            onRelease={release}
+          />
         )}
       </section>
     );

@@ -1,487 +1,637 @@
 import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { levels } from "../src/game/levels";
+const route = (id: string) => `/#/exercise/${id}`;
+async function point(page: Page, x: number, y: number) {
+  return page
+    .locator(".puzzle-svg")
+    .evaluate(
+      (el, p) =>
+        new DOMPoint(p.x, p.y)
+          .matrixTransform((el as unknown as SVGSVGElement).getScreenCTM()!)
+          .toJSON(),
+      { x, y },
+    );
+}
+async function drag(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+) {
+  const a = await point(page, from.x, from.y),
+    b = await point(page, to.x, to.y);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 8 });
+  await page.mouse.up();
+}
+async function position(page: Page, id: string) {
+  return page.locator(`[data-piece="${id}"] > g`).evaluate((el) => {
+    const t = (el as unknown as SVGGElement).transform.baseVal.consolidate()!
+      .matrix;
+    return { x: t.e, y: t.f };
+  });
+}
 
-test("chapter lesson, mouse drag, failure, success, persistence and reset", async ({
+test("opens directly in a full-height workspace and learns through actions", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Learn to see. Learn to arrange." }),
+    page.getByRole("region", { name: "Interactive composition canvas" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /01.*Alignment/ }).click();
-  await page.getByLabel(/Move the slider/).fill("100");
-  await page.getByRole("button", { name: "Start the study" }).click();
-  await page.getByRole("button", { name: "Check composition" }).click();
-  await expect(page.getByText("LOOK AGAIN")).toBeVisible();
-  await page.getByRole("button", { name: "Show hint" }).click();
-  await expect(page.locator(".guides")).toBeVisible();
-  const svg = page.locator(".puzzle-svg");
-  const box = (await svg.boundingBox())!;
-  const x = box.x + (510 / 800) * box.width;
-  const y = box.y + (170 / 600) * box.height;
-  await page.mouse.move(x + 5, y + 4);
-  await page.mouse.down();
-  await page.mouse.move(
-    box.x + (590 / 800) * box.width + 5,
-    box.y + (300 / 600) * box.height + 4,
-    {
-      steps: 12,
-    },
+  await expect(page).toHaveURL(/#\/exercise\/alignment-1$/);
+  await expect(page.locator(".home")).toHaveCount(0);
+  await expect(page.locator(".onboarding")).toHaveAttribute(
+    "data-step",
+    "select",
   );
+  const b = await point(page, 510, 170);
+  await page.mouse.move(b.x, b.y);
+  await page.mouse.down();
+  await expect(page.locator(".onboarding")).toHaveAttribute(
+    "data-step",
+    "move",
+  );
+  const end = await point(page, 590, 300);
+  await page.mouse.move(end.x, end.y, { steps: 8 });
   await page.mouse.up();
+  await expect(page.locator(".onboarding")).toHaveAttribute(
+    "data-step",
+    "check",
+  );
   await page.getByRole("button", { name: "Check composition" }).click();
   await expect(page.getByText("RELATIONSHIP FOUND")).toBeVisible();
-  await page.reload();
-  await expect(page.locator(".chapter-progress").first()).toContainText(
-    "1 OF 5 COMPLETE",
-  );
-  await page.getByRole("button", { name: /01.*Alignment/ }).click();
-  await page.getByRole("button", { name: "01 A common ground" }).click();
-  const piece = page.getByRole("button", { name: /Piece B,/ });
-  await piece.focus();
-  await page.keyboard.press("ArrowDown");
-  await page.getByRole("button", { name: "Reset" }).click();
-  await expect(page.locator('[data-piece="B"] > g')).toHaveAttribute(
-    "transform",
-    "translate(510 170) rotate(0)",
+  expect(
+    await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("kompo.learning.v1")!),
+    ),
+  ).toMatchObject({ controls: ["mouse"], lessons: ["alignment-1"] });
+  await page.getByRole("button", { name: "Dismiss canvas message" }).click();
+  await page.getByRole("button", { name: "Next exercise" }).click();
+  await expect(page).toHaveURL(/alignment-2$/);
+  await expect(page.locator(".onboarding")).toHaveAttribute(
+    "data-step",
+    "check",
   );
   expect(errors).toEqual([]);
 });
 
-test("all levels can be solved through the rendered canvas and advance", async ({
+test("skip guidance does not complete a puzzle, and guidance can be replayed", async ({
   page,
 }) => {
-  await page.goto("/?debug=true");
-  await page.getByText("Developer tools", { exact: true }).click();
-  for (let i = 0; i < levels.length; i++) {
-    const level = levels[i];
-    await page.getByLabel("Jump to exercise").selectOption(String(i));
-    for (const [id, target] of Object.entries(level.solution)) {
-      const shape = level.shapes.find((s) => s.id === id)!;
-      const box = (await page.locator(".puzzle-svg").boundingBox())!;
-      await page.mouse.move(
-        box.x + (shape.x / level.frame.width) * box.width,
-        box.y + (shape.y / level.frame.height) * box.height,
-      );
-      await page.mouse.down();
-      await page.mouse.move(
-        box.x + (target.x / level.frame.width) * box.width,
-        box.y + (target.y / level.frame.height) * box.height,
-        { steps: 6 },
-      );
-      await page.mouse.up();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Skip guidance" }).click();
+  await expect(page.locator(".onboarding")).toHaveCount(0);
+  expect(
+    await page.evaluate(() => localStorage.getItem("kompo.progress.v1")),
+  ).toBeNull();
+  await page.reload();
+  await expect(page.locator(".onboarding")).toHaveCount(0);
+  await page.getByRole("button", { name: "About this principle" }).click();
+  await expect(page.getByRole("dialog", { name: "Alignment" })).toBeVisible();
+  await page.getByLabel(/Move the slider/).fill("100");
+  await page
+    .getByRole("dialog", { name: "Alignment" })
+    .getByRole("button", { name: "Replay guidance" })
+    .click();
+  await expect(page.locator(".onboarding")).toHaveAttribute(
+    "data-step",
+    "select",
+  );
+  await page.getByRole("button", { name: "Choose an exercise" }).click();
+  await expect(page.getByRole("dialog", { name: "Studies" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("hash navigation, browser Back, refresh and root resume preserve context and drafts", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Skip guidance" }).click();
+  await drag(page, { x: 510, y: 170 }, { x: 540, y: 220 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("kompo.draft.v1") ?? "null")
+            ?.positions[0].x,
+      ),
+    )
+    .toBeCloseTo(540, 0);
+  await page.reload();
+  await expect
+    .poll(() => position(page, "B").then((p) => p.x))
+    .toBeCloseTo(540, 0);
+  await page.getByRole("button", { name: "Choose an exercise" }).click();
+  await page.getByRole("button", { name: /03 Different forms/ }).click();
+  await expect(page).toHaveURL(/alignment-3$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/alignment-1$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/alignment-3$/);
+  await page.goto("/");
+  await expect(page).toHaveURL(/alignment-3$/);
+  await page.goto("/#/exercise/bad-99");
+  await expect(page).toHaveURL(/alignment-3$/);
+});
+
+test("all fifteen exercises remain solvable with pointer dragging", async ({
+  page,
+}) => {
+  await page.goto("/");
+  for (const l of levels) {
+    await page.evaluate((id) => {
+      location.hash = `/exercise/${id}`;
+    }, l.id);
+    await expect(page.locator(".workspace-objective h1")).toHaveText(l.title);
+    for (const [id, target] of Object.entries(l.solution)) {
+      const start = await position(page, id);
+      await drag(page, start, target);
     }
     await page.getByRole("button", { name: "Check composition" }).click();
     await expect(page.getByText("RELATIONSHIP FOUND")).toBeVisible();
   }
-  await page.getByRole("button", { name: "Finish the studies" }).click();
-  await expect(page.locator(".chapter-progress")).toContainText([
-    "5 OF 5 COMPLETE",
-    "5 OF 5 COMPLETE",
-    "5 OF 5 COMPLETE",
+  await page.getByRole("button", { name: "All studies", exact: true }).click();
+  await expect(page.locator(".chapter-progress")).toHaveText([
+    "5 / 5 complete",
+    "5 / 5 complete",
+    "5 / 5 complete",
   ]);
-  await expect(
-    page.getByRole("heading", { name: "Learn to see. Learn to arrange." }),
-  ).toBeVisible();
 });
 
-test("mobile touch drag, bounds and layout", async ({ browser }) => {
+test("hint snapping, bottom edges, keyboard nudging and reset remain usable", async ({
+  page,
+}) => {
+  await page.goto(route("alignment-3"));
+  await page.getByRole("button", { name: "Show hint" }).click();
+  await drag(page, { x: 390, y: 200 }, { x: 450, y: 355 });
+  await drag(page, { x: 590, y: 270 }, { x: 650, y: 328 });
+  await expect(page.locator('[data-edge="B"]')).toHaveClass("matched");
+  await expect(page.locator('[data-edge="C"]')).toHaveClass("matched");
+  await page.getByRole("button", { name: "Check composition" }).click();
+  await expect(page.getByText("RELATIONSHIP FOUND")).toBeVisible();
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await page.getByRole("button", { name: /Piece B,/ }).focus();
+  await page.keyboard.press("ArrowDown");
+  expect((await position(page, "B")).y).toBe(203);
+  await page.getByRole("button", { name: "Check composition" }).click();
+  await expect(page.getByText("LOOK AGAIN")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".feedback")).toHaveCount(0);
+});
+
+test("touch selects without dragging, and the pad taps, holds and stops", async ({
+  browser,
+}) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
   });
   const page = await context.newPage();
-  await page.goto("http://127.0.0.1:5173");
-  await page.getByRole("button", { name: "Begin exploring" }).click();
-  await page.getByRole("button", { name: "Start the study" }).click();
-  const svg = page.locator(".puzzle-svg");
-  await svg.scrollIntoViewIfNeeded();
-  await page.evaluate(() => document.fonts.ready);
-  const points = await svg.evaluate((el) => {
-    const m = (el as unknown as SVGSVGElement).getScreenCTM()!;
-    return {
-      start: new DOMPoint(510, 170).matrixTransform(m).toJSON(),
-      end: new DOMPoint(590, 300).matrixTransform(m).toJSON(),
-    };
-  });
+  await page.goto(test.info().project.use.baseURL + route("alignment-1"));
+  await expect(page.getByRole("button", { name: "Move right" })).toBeDisabled();
   const cdp = await context.newCDPSession(page);
+  const a = await point(page, 510, 170),
+    b = await point(page, 590, 300);
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchStart",
-    touchPoints: [{ x: points.start.x, y: points.start.y }],
+    touchPoints: [{ x: a.x, y: a.y }],
   });
-  for (let i = 1; i <= 10; i++)
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchMove",
-      touchPoints: [
-        {
-          x: points.start.x + ((points.end.x - points.start.x) * i) / 10,
-          y: points.start.y + ((points.end.y - points.start.y) * i) / 10,
-        },
-      ],
-    });
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: b.x, y: b.y }],
+  });
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchEnd",
     touchPoints: [],
   });
-  await page.getByRole("button", { name: "Check composition" }).click();
-  await expect(page.getByText("RELATIONSHIP FOUND")).toBeVisible();
+  expect(await position(page, "B")).toEqual({ x: 510, y: 170 });
+  await expect(page.locator(".onboarding")).toHaveAttribute(
+    "data-step",
+    "move",
+  );
+  await expect(page.getByRole("button", { name: "Move right" })).toBeEnabled();
+  await page.getByRole("button", { name: "Move right" }).tap();
+  expect((await position(page, "B")).x).toBe(513);
+  await expect(page.locator(".onboarding")).toHaveAttribute(
+    "data-step",
+    "check",
+  );
+  const button = (await page
+    .getByRole("button", { name: "Move right" })
+    .boundingBox())!;
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [
+      { x: button.x + button.width / 2, y: button.y + button.height / 2 },
+    ],
+  });
+  await expect
+    .poll(() => position(page, "B").then((p) => p.x))
+    .toBeGreaterThan(545);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  const stopped = await position(page, "B");
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let n = 0;
+        const tick = () => {
+          if (++n >= 10) resolve();
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  expect(await position(page, "B")).toEqual(stopped);
+  await page.getByRole("button", { name: "Move down" }).focus();
+  await page.keyboard.press("Space");
+  expect((await position(page, "B")).y).toBe(173);
   expect(
     await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
+      () =>
+        document.documentElement.scrollWidth <= innerWidth &&
+        document.documentElement.scrollHeight <= innerHeight + 1,
     ),
   ).toBe(true);
+  await page.screenshot({
+    path: "test-results/kompo-touch-workspace.png",
+    fullPage: true,
+  });
   await context.close();
 });
 
-test("responsive views, chapter transition and visual review captures", async ({
-  page,
+test("holding respects bounds and stops on blur, cancellation and navigation", async ({
+  browser,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1050 });
-  await page.goto("/?debug=true");
-  await page.screenshot({
-    path: "test-results/kompo-home.png",
-    fullPage: true,
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
   });
-  await page.getByRole("button", { name: /02.*Repetition/ }).click();
-  await page.screenshot({
-    path: "test-results/kompo-lesson.png",
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "Start the study" }).click();
-  await page.screenshot({
-    path: "test-results/kompo-game.png",
-    fullPage: true,
-  });
-  await page.getByText("Developer tools", { exact: true }).click();
-  await page.getByLabel("Jump to exercise").selectOption("4");
-  await page.getByRole("button", { name: "Complete / bypass" }).click();
-  await page.getByRole("button", { name: "Next study" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Repetition." }),
-  ).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.getByRole("button", { name: "Start the study" }).click();
-  await page.screenshot({
-    path: "test-results/kompo-mobile.png",
-    fullPage: true,
-  });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.getByRole("button", { name: "Clear progress" }).click();
-  await page.getByRole("button", { name: "KOMPO home" }).click();
-  await expect(page.locator(".chapter-progress")).toContainText([
-    "0 OF 5 COMPLETE",
-    "0 OF 5 COMPLETE",
-    "0 OF 5 COMPLETE",
-  ]);
-});
-
-test("frame aspect ratio survives resizing and dragging stays contained", async ({
-  page,
-}) => {
-  await page.goto("/?debug=true");
-  await page.getByText("Developer tools", { exact: true }).click();
-  for (const index of [0, 1, 5]) {
-    await page.getByLabel("Jump to exercise").selectOption(String(index));
-    for (const width of [1280, 390]) {
-      await page.setViewportSize({ width, height: 900 });
-      const box = (await page.locator(".puzzle-svg").boundingBox())!;
-      expect(box.width / box.height).toBeCloseTo(
-        levels[index].frame.width / levels[index].frame.height,
-        2,
-      );
-    }
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(test.info().project.use.baseURL + route("alignment-1"));
+  const cdp = await context.newCDPSession(page);
+  const a = await point(page, 510, 170);
+  await page.touchscreen.tap(a.x, a.y);
+  async function start(name: string) {
+    const r = (await page.getByRole("button", { name }).boundingBox())!;
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: r.x + r.width / 2, y: r.y + r.height / 2 }],
+    });
   }
-  await page.getByLabel("Jump to exercise").selectOption("1");
-  await page.evaluate(() => document.fonts.ready);
-  const svg = page.locator(".puzzle-svg");
-  const points = await svg.evaluate((el) => {
-    const m = (el as unknown as SVGSVGElement).getScreenCTM()!;
-    return {
-      start: new DOMPoint(180, 110).matrixTransform(m).toJSON(),
-      end: new DOMPoint(-100, -100).matrixTransform(m).toJSON(),
-    };
+  await start("Move right");
+  await expect
+    .poll(() => position(page, "B").then((p) => p.x), { timeout: 6000 })
+    .toBe(748);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchCancel",
+    touchPoints: [],
   });
-  await page.mouse.move(points.start.x, points.start.y);
-  await page.mouse.down();
-  await page.mouse.move(points.end.x, points.end.y, { steps: 5 });
-  await page.mouse.up();
-  await expect(page.locator('[data-piece="A"] > g')).toHaveAttribute(
-    "transform",
-    "translate(62 24) rotate(0)",
+  await start("Move left");
+  await expect
+    .poll(() => position(page, "B").then((p) => p.x))
+    .toBeLessThan(720);
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  const stopped = await position(page, "B");
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  await page.evaluate(() => new Promise<void>((r) => setTimeout(r, 150)));
+  expect(await position(page, "B")).toEqual(stopped);
+  await start("Move down");
+  await page.evaluate(() => {
+    location.hash = "/exercise/alignment-2";
+  });
+  await expect(page.locator(".workspace-objective h1")).toHaveText(
+    "A central axis",
   );
-  await page.screenshot({
-    path: "test-results/kompo-square-frame.png",
-    fullPage: true,
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
   });
+  await expect(page.getByRole("button", { name: "Move down" })).toBeDisabled();
+  expect(errors).toEqual([]);
+  await context.close();
 });
 
-test("third alignment level explains the bottom edge and can be completed with hints", async ({
+test("workspace and bounded frames fit desktop, portrait and landscape", async ({
+  browser,
   page,
 }) => {
-  await page.goto("/?debug=true");
-  await page.getByText("Developer tools", { exact: true }).click();
-  await page.getByLabel("Jump to exercise").selectOption("2");
-  await page.getByRole("button", { name: "Show hint" }).click();
-  await expect(
-    page.locator('[data-target="B"] .target-outline ellipse'),
-  ).toBeVisible();
-  await expect(
-    page.locator('[data-target="C"] .target-outline polygon'),
-  ).toBeVisible();
-  await page.evaluate(() => document.fonts.ready);
-  async function drag(
-    from: { x: number; y: number },
-    to: { x: number; y: number },
-  ) {
-    const p = await page.locator(".puzzle-svg").evaluate(
-      (el, pts) => {
-        const m = (el as unknown as SVGSVGElement).getScreenCTM()!;
-        return pts.map((p) =>
-          new DOMPoint(p.x, p.y).matrixTransform(m).toJSON(),
-        );
+  await page.goto("/");
+  await page.screenshot({
+    path: "test-results/kompo-workspace.png",
+    fullPage: true,
+  });
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const mobile = await context.newPage();
+  await mobile.goto(test.info().project.use.baseURL + route("alignment-2"));
+  for (const size of [
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+  ]) {
+    await mobile.setViewportSize(size);
+    const box = (await mobile.locator(".puzzle-svg").boundingBox())!;
+    expect(box.width / box.height).toBeCloseTo(1, 2);
+    expect(box.width).toBeGreaterThan(100);
+    expect(
+      await mobile.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= innerWidth &&
+          document.documentElement.scrollHeight <= innerHeight + 1,
+      ),
+    ).toBe(true);
+    await expect(
+      mobile.getByRole("button", { name: "Move down" }),
+    ).toBeVisible();
+    await mobile.screenshot({
+      path: `test-results/kompo-layout-${size.width}.png`,
+      fullPage: false,
+    });
+  }
+  await context.close();
+});
+
+test("touch hints snap on release without trapping a held movement", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  await page.goto(test.info().project.use.baseURL + route("alignment-1"));
+  const p = await point(page, 510, 170);
+  await page.touchscreen.tap(p.x, p.y);
+  await page.getByRole("button", { name: "Show hint" }).tap();
+  await page.getByRole("button", { name: /Piece B,/ }).focus();
+  for (let i = 0; i < 8; i++) await page.keyboard.press("Shift+ArrowRight");
+  for (let i = 0; i < 13; i++) await page.keyboard.press("Shift+ArrowDown");
+  expect(await position(page, "B")).toEqual({ x: 590, y: 300 });
+  await page.getByRole("button", { name: "Move right" }).tap();
+  expect((await position(page, "B")).x).toBe(593);
+  await page.getByRole("button", { name: "Move left" }).tap();
+  expect((await position(page, "B")).x).toBe(590);
+  const cdp = await context.newCDPSession(page);
+  const r = (await page
+    .getByRole("button", { name: "Move right" })
+    .boundingBox())!;
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: r.x + r.width / 2, y: r.y + r.height / 2 }],
+  });
+  await expect
+    .poll(() => position(page, "B").then((p) => p.x))
+    .toBeGreaterThan(625);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  expect((await position(page, "B")).x).toBeGreaterThan(625);
+  await context.close();
+});
+
+test("learned mouse controls do not suppress new touch onboarding", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  await context.addInitScript(() =>
+    localStorage.setItem(
+      "kompo.learning.v1",
+      JSON.stringify({ controls: ["mouse"], lessons: ["alignment-1"] }),
+    ),
+  );
+  const page = await context.newPage();
+  await page.goto(test.info().project.use.baseURL + "/");
+  await expect(page.locator(".onboarding")).toHaveAttribute(
+    "data-step",
+    "select",
+  );
+  const p = await point(page, 510, 170);
+  await page.touchscreen.tap(p.x, p.y);
+  await expect(page.locator(".onboarding")).toHaveAttribute(
+    "data-step",
+    "move",
+  );
+  await context.close();
+});
+
+test("blocked storage does not prevent the first exercise from working", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    Object.defineProperty(window, "localStorage", {
+      value: {
+        getItem() {
+          throw new Error("blocked");
+        },
+        setItem() {
+          throw new Error("blocked");
+        },
       },
-      [from, to],
-    );
-    await page.mouse.move(p[0].x, p[0].y);
-    await page.mouse.down();
-    await page.mouse.move(p[1].x, p[1].y, { steps: 8 });
-    await page.mouse.up();
-  }
-  await drag({ x: 390, y: 200 }, { x: 450, y: 355 });
-  await expect(page.locator('[data-piece="B"] > g')).toHaveAttribute(
-    "transform",
-    /translate\([^ ]+ 348\)/,
+    }),
   );
-  await expect(page.locator('[data-edge="B"]')).toHaveClass("matched");
-  await drag({ x: 590, y: 270 }, { x: 650, y: 328 });
-  await expect(page.locator('[data-edge="C"]')).toHaveClass("matched");
-  await page.screenshot({
-    path: "test-results/kompo-baseline-hint.png",
-    fullPage: true,
-  });
+  await page.goto("/");
+  await expect(page.locator(".workspace-objective h1")).toHaveText(
+    "A common ground",
+  );
+  await page.getByRole("button", { name: "Skip guidance" }).click();
+  await drag(page, { x: 510, y: 170 }, { x: 590, y: 300 });
   await page.getByRole("button", { name: "Check composition" }).click();
   await expect(page.getByText("RELATIONSHIP FOUND")).toBeVisible();
-});
-
-test("spacing hints show interval brackets and use visual instructions", async ({
-  page,
-}) => {
-  await page.goto("/?debug=true");
-  await page.getByText("Developer tools", { exact: true }).click();
-  for (const index of ["6", "11", "13"]) {
-    await page.getByLabel("Jump to exercise").selectOption(index);
-    await page.getByRole("button", { name: "Show hint" }).click();
-    await expect(page.locator(".interval-guide").first()).toBeVisible();
-    await expect(page.locator(".objective")).not.toContainText(/units|\d{2,}/);
-    await expect(page.locator(".hint")).not.toContainText(/units|[xy] =/);
-  }
-  await page.screenshot({
-    path: "test-results/kompo-spacing-hint.png",
-    fullPage: true,
-  });
-});
-
-test("readable interface contrast and local Material icons", async ({
-  page,
-}) => {
-  await page.goto("/?debug=true");
-  async function checkContrast(selectors: string[], canvas = false) {
-    const results = await page
-      .locator(selectors.join(","))
-      .evaluateAll((elements, canvas) => {
-        const rgb = (value: string) => value.match(/[\d.]+/g)!.map(Number);
-        const luminance = (color: number[]) =>
-          color
-            .slice(0, 3)
-            .map((v) => v / 255)
-            .map((v) =>
-              v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4,
-            )
-            .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
-        return elements
-          .filter((el) => el.getBoundingClientRect().width > 0)
-          .map((el) => {
-            const style = getComputedStyle(el);
-            let parent: Element | null = el;
-            let background = "";
-            while (parent) {
-              const value = getComputedStyle(parent).backgroundColor;
-              if (rgb(value)[3] !== 0) {
-                background = value;
-                break;
-              }
-              parent = parent.parentElement;
-            }
-            if (canvas)
-              background = getComputedStyle(
-                document.documentElement,
-              ).getPropertyValue("--canvas-paper");
-            // The frame's paper is deliberately stable across UI themes.
-            if (background.startsWith("#")) {
-              const h = background.trim();
-              background = `rgb(${parseInt(h.slice(1, 3), 16)}, ${parseInt(h.slice(3, 5), 16)}, ${parseInt(h.slice(5, 7), 16)})`;
-            }
-            const foreground = canvas ? style.fill : style.color;
-            const a = luminance(rgb(foreground));
-            const b = luminance(rgb(background));
-            return {
-              label: el.textContent?.trim(),
-              ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
-            };
-          });
-      }, canvas);
-    expect(results.length).toBeGreaterThan(0);
-    for (const result of results)
-      expect(result.ratio, `${result.label} contrast`).toBeGreaterThanOrEqual(
-        4.5,
-      );
-  }
-  await checkContrast([
-    ".intro-copy",
-    ".chapter-card p",
-    ".chapter-progress",
-    "footer",
-    ".primary",
-  ]);
-  const primary = page.getByRole("button", { name: "Begin exploring" });
-  await expect(primary.locator("svg")).toHaveCount(0);
-  await primary.hover();
-  await checkContrast([".primary"]);
-  await primary.click();
-  await checkContrast([".lesson-copy", ".quiet", ".slider-label", ".primary"]);
-  await page.getByRole("button", { name: "Start the study" }).click();
-  await page.getByRole("button", { name: "Show hint" }).click();
-  await checkContrast([
-    ".instructions",
-    ".canvas-bottom",
-    ".canvas-status",
-    ".exercise-number span",
-    ".hint",
-    ".hint-instructions",
-    ".keyboard-tip",
-  ]);
-  await expect(page.locator(".hint")).toHaveCSS("opacity", "1");
-  await checkContrast([".hint-target text", ".frame-guide text"], true);
   await expect(
-    page
-      .getByRole("button", { name: "Reset", exact: true })
-      .locator('[data-icon="replay"]'),
+    page.getByText("Progress is available for this session."),
   ).toBeVisible();
-  for (const theme of ["dark", "light"]) {
-    await page
-      .locator("html")
-      .evaluate((el, theme) => el.setAttribute("data-theme", theme), theme);
-    await checkContrast([
-      ".instructions",
-      ".canvas-bottom",
-      ".hint",
-      ".hint-instructions",
-      ".primary",
-    ]);
-  }
-  await page.screenshot({
-    path: "test-results/kompo-colors-icons.png",
-    fullPage: true,
-  });
+  await page.getByRole("button", { name: "Next exercise" }).click();
+  await expect(page).toHaveURL(/alignment-2$/);
 });
 
-test("canvas workspace owns controls, dismissible feedback and progression", async ({
+test("one floating tool panel owns every action and status is anchored at the bottom center", async ({
   page,
 }) => {
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto("/?debug=true");
-    await page.evaluate(() => localStorage.clear());
-    await page.reload();
-    await page.getByRole("button", { name: "Begin exploring" }).click();
-    await page.getByRole("button", { name: "Start the study" }).click();
-    const workspace = page.getByRole("region", {
-      name: "Interactive composition canvas",
-    });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Skip guidance" }).click();
+  const tools = page.getByRole("toolbar", { name: "Canvas controls" });
+  await expect(tools).toHaveCount(1);
+  await expect(tools).toHaveAttribute("aria-orientation", "horizontal");
+  await expect(tools.getByRole("button")).toHaveCount(4);
+  for (const name of [
+    "Reset",
+    "Show hint",
+    "About this principle",
+    "Check composition",
+  ])
     await expect(
-      workspace.getByRole("toolbar", { name: "Canvas controls" }),
+      tools.getByRole("button", { name, exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".game-sidebar button")).toHaveCount(0);
-    await workspace.getByRole("button", { name: "Check composition" }).click();
-    await expect(workspace.getByText("LOOK AGAIN")).toBeVisible();
-    await expect(workspace.locator(".feedback-highlight")).toHaveCount(1);
-    const frame = await workspace.locator(".puzzle-svg").boundingBox();
-    const popup = await workspace.locator(".canvas-notice").boundingBox();
-    expect(frame).not.toBeNull();
-    expect(popup).not.toBeNull();
-    const overlaps = await workspace.evaluate((el) => {
-      const notice = el
-        .querySelector(".canvas-notice")!
-        .getBoundingClientRect();
-      return [...el.querySelectorAll(".puzzle-svg > [data-piece] > g")].some(
-        (piece) => {
-          const r = piece.getBoundingClientRect();
-          return (
-            notice.left < r.right &&
-            notice.right > r.left &&
-            notice.top < r.bottom &&
-            notice.bottom > r.top
-          );
-        },
-      );
-    });
-    expect(overlaps).toBe(false);
-    await page.screenshot({
-      path: `test-results/kompo-canvas-feedback-${width}.png`,
-      fullPage: true,
-    });
-    await page.keyboard.press("Escape");
-    await expect(workspace.locator(".canvas-notice")).toHaveCount(0);
-    await expect(
-      workspace.getByRole("button", { name: "Check composition" }),
-    ).toBeFocused();
-    await workspace.getByRole("button", { name: "Show hint" }).click();
-    await expect(workspace.locator(".hint")).toBeVisible();
-    await workspace
-      .getByRole("button", { name: "Dismiss canvas message" })
-      .click();
-    await expect(workspace.locator(".guides")).toBeVisible();
-    await expect(
-      workspace.getByRole("button", { name: "Hide hint" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await workspace.getByRole("button", { name: "Reset", exact: true }).click();
-    await expect(workspace.locator(".guides")).toHaveCount(0);
-    await expect(
-      workspace.getByRole("button", { name: "Show hint" }),
-    ).toBeVisible();
-    await workspace.getByRole("button", { name: "Check composition" }).click();
-    const form = workspace.getByRole("button", { name: /Piece B,/ });
-    await form.focus();
-    await page.keyboard.press("ArrowDown");
-    await expect(workspace.locator(".canvas-notice")).toHaveCount(0);
-    await expect(workspace.locator(".feedback-highlight")).toHaveCount(0);
-    await page.getByText("Developer tools", { exact: true }).click();
-    await page.getByRole("button", { name: "Complete / bypass" }).click();
-    await expect(workspace.getByText("RELATIONSHIP FOUND")).toBeVisible();
-    await workspace
-      .getByRole("button", { name: "Dismiss canvas message" })
-      .click();
-    await expect(
-      workspace.getByRole("button", { name: "Next exercise" }),
-    ).toBeVisible();
-    await workspace.getByRole("button", { name: "Next exercise" }).click();
-    await expect(workspace.locator(".canvas-top")).toContainText(
-      "A central axis",
-    );
-    await expect(
-      workspace.getByRole("button", { name: "Check composition" }),
-    ).toBeVisible();
+  await expect(
+    page.locator(
+      ".workspace-header,.workspace-deck,.canvas-top,.canvas-bottom",
+    ),
+  ).toHaveCount(0);
+  const menu = (await page
+    .getByRole("button", { name: "Choose an exercise" })
+    .boundingBox())!;
+  const toolbar = (await tools.boundingBox())!;
+  expect(menu.x).toBeLessThan(24);
+  expect(menu.y).toBeLessThan(24);
+  expect(Math.abs(toolbar.x + toolbar.width / 2 - 640)).toBeLessThan(1);
+  expect(toolbar.y).toBeLessThan(24);
+  const before = (await page.locator(".puzzle-svg").boundingBox())!;
+  await tools.getByRole("button", { name: "Check composition" }).click();
+  await expect(page.getByText("LOOK AGAIN")).toBeVisible();
+  const notice = (await page.locator(".workspace-message-area").boundingBox())!;
+  expect(Math.abs(notice.x + notice.width / 2 - 640)).toBeLessThan(1);
+  expect(notice.y + notice.height).toBeCloseTo(884, 0);
+  expect(notice.y).toBeGreaterThanOrEqual(before.y + before.height);
+  expect(await page.locator(".puzzle-svg").boundingBox()).toEqual(before);
+  await page.screenshot({
+    path: "test-results/kompo-floating-desktop.png",
+    fullPage: false,
+  });
+  await page.getByRole("button", { name: "Dismiss canvas message" }).click();
+  await expect(page.locator(".workspace-message-area")).toHaveCount(0);
+  await tools.getByRole("button", { name: "Reset", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(tools.getByRole("button", { name: "Show hint" })).toBeFocused();
+  await tools.getByRole("button", { name: "About this principle" }).click();
+  await expect(page.getByRole("dialog", { name: "Alignment" })).toBeVisible();
+  await expect(page.locator(".control-reference")).toContainText("stay fixed");
+});
+
+test("mobile toolbar stays on the upper edge and keeps the artwork width available", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  await page.goto(test.info().project.use.baseURL + "/");
+  await page.getByRole("button", { name: "Skip guidance" }).tap();
+  const tools = page.getByRole("toolbar", { name: "Canvas controls" });
+  await expect(tools).toHaveAttribute("aria-orientation", "horizontal");
+  const rail = (await tools.boundingBox())!;
+  const frame = (await page.locator(".puzzle-svg").boundingBox())!;
+  expect(rail.y).toBe(12);
+  expect(rail.width).toBeGreaterThan(180);
+  expect(rail.height).toBeLessThan(60);
+  expect(frame.width).toBeGreaterThan(350);
+  const menu = (await page
+    .getByRole("button", { name: "Choose an exercise" })
+    .boundingBox())!;
+  expect(rail.x).toBeGreaterThanOrEqual(menu.x + menu.width + 8);
+  const action = tools.getByRole("button", { name: "Check composition" });
+  await expect(
+    action.locator('[data-icon="check_circle_outline"]'),
+  ).toBeVisible();
+  expect(
+    await action.evaluate((el) =>
+      [...el.childNodes]
+        .filter((n) => n.nodeType === Node.TEXT_NODE)
+        .map((n) => n.textContent)
+        .join("")
+        .trim(),
+    ),
+  ).toBe("");
+  await tools.getByRole("button", { name: "Check composition" }).tap();
+  await expect(page.getByText("LOOK AGAIN")).toBeVisible();
+  const popup = (await page.locator(".workspace-message-area").boundingBox())!;
+  const pad = (await page.locator(".thumb-controller").boundingBox())!;
+  expect(popup.x + popup.width + 12).toBeLessThanOrEqual(pad.x);
+  expect(popup.y + popup.height).toBeCloseTo(832, 0);
+  expect(popup.y).toBeGreaterThanOrEqual(frame.y + frame.height);
+  expect(pad.y).toBeGreaterThanOrEqual(frame.y + frame.height);
+  expect(await page.locator(".puzzle-svg").boundingBox()).toEqual(frame);
+  await page.screenshot({
+    path: "test-results/kompo-floating-mobile.png",
+    fullPage: false,
+  });
+  await tools.getByRole("button", { name: "Reset", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(tools.getByRole("button", { name: "Show hint" })).toBeFocused();
+  await context.close();
+});
+
+test("controller suppresses native long-press editing without disabling lesson text selection", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  await page.goto(test.info().project.use.baseURL + "/");
+  const suppressed = await page.locator(".thumb-controller").evaluate((el) => {
+    const button = el.querySelector("button")!;
+    return {
+      touch: !button.dispatchEvent(
+        new Event("touchstart", { bubbles: true, cancelable: true }),
+      ),
+      selection: !el.dispatchEvent(
+        new Event("selectstart", { bubbles: true, cancelable: true }),
+      ),
+      context: !el.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+      ),
+      drag: !el.dispatchEvent(
+        new Event("dragstart", { bubbles: true, cancelable: true }),
+      ),
+      styles: [el, ...el.querySelectorAll("*")].every(
+        (node) =>
+          getComputedStyle(node).getPropertyValue("-webkit-user-select") ===
+          "none",
+      ),
+    };
+  });
+  expect(suppressed).toEqual({
+    touch: true,
+    selection: true,
+    context: true,
+    drag: true,
+    styles: true,
+  });
+  expect(
+    await page
+      .locator(".objective")
+      .evaluate((el) =>
+        getComputedStyle(el).getPropertyValue("-webkit-user-select"),
+      ),
+  ).not.toBe("none");
+  for (const width of [320, 360, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const menu = (await page
+      .getByRole("button", { name: "Choose an exercise" })
+      .boundingBox())!;
+    const toolbar = (await page
+      .getByRole("toolbar", { name: "Canvas controls" })
+      .boundingBox())!;
+    expect(menu.x + menu.width + 4).toBeLessThanOrEqual(toolbar.x);
+    expect(toolbar.x + toolbar.width).toBeLessThanOrEqual(width);
   }
+  await context.close();
 });

@@ -1,0 +1,701 @@
+/* One uninterrupted surface. App controls are anchored to its edges. */
+body {
+  overflow: hidden;
+}
+.app.app--workspace {
+  --edge: 16px;
+  --bottom-edge: max(16px, env(safe-area-inset-bottom));
+  --status-clearance: 196px;
+  position: relative;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  height: 100vh;
+  height: 100dvh;
+  isolation: isolate;
+}
+.workspace-navigation {
+  position: absolute;
+  z-index: 10;
+  left: var(--edge);
+  top: var(--edge);
+  width: min(340px, calc(100% - 32px));
+  pointer-events: none;
+}
+.lessons-trigger {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 10px 13px;
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+  font-weight: 500;
+}
+.lessons-trigger:hover {
+  background: var(--bg-surface-hover);
+}
+.workspace-objective {
+  margin-top: 18px;
+  letter-spacing: normal;
+}
+.lesson-location {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.workspace-objective h1 {
+  font-family: var(--font-heading);
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: -0.015em;
+  line-height: 1;
+}
+.workspace-objective .objective {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 6px;
+  max-width: 340px;
+}
+.workspace-main,
+.app--workspace .canvas-workspace {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  height: 100%;
+}
+.app--workspace .canvas-workspace {
+  border: 0;
+  display: block;
+  background: transparent;
+}
+.app--workspace .canvas-body {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+.app--workspace .composition-stage {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: var(--context-clearance, 190px) 24px var(--status-clearance);
+  background: transparent;
+}
+.app--workspace .puzzle-svg {
+  max-width: 100%;
+  flex: none;
+}
+.app--workspace .selection {
+  stroke: var(--guide-target);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+}
+.app--workspace .canvas-toolbar {
+  position: absolute;
+  z-index: 12;
+  top: var(--edge);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  width: max-content;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px;
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 11px;
+  box-shadow: var(--shadow-md);
+}
+.tool-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--text-primary);
+  border-radius: 7px;
+}
+.tool-button:hover {
+  background: var(--bg-surface-hover);
+}
+.tool-button[aria-pressed="true"] {
+  background: var(--brand-primary-subtle);
+  color: var(--text-link);
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+}
+.tool-button .material-icon {
+  width: 21px;
+  height: 21px;
+}
+.tool-divider {
+  width: 1px;
+  height: 26px;
+  background: var(--border-default);
+  margin: 0 3px;
+}
+.app--workspace .canvas-toolbar .primary {
+  position: relative;
+  min-height: 44px;
+  height: 44px;
+  min-width: 44px;
+  width: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  border-radius: 7px;
+  font-size: 12px;
+  margin: 0;
+  transform: none;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 180px;
+  padding: 7px 9px;
+  color: var(--text-inverse);
+  background: var(--bg-inverse);
+  border-radius: 5px;
+  font: 11px var(--font-body);
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+}
+@media (hover: hover) {
+  [data-tooltip]:hover::after,
+  [data-tooltip]:focus-visible::after {
+    opacity: 1;
+  }
+}
+.app--workspace .workspace-announcements {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+.app--workspace .workspace-message-area {
+  position: absolute;
+  left: 50%;
+  bottom: var(--bottom-edge);
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 32px));
+  max-width: none;
+  max-height: min(180px, 40dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  border-radius: 10px;
+  pointer-events: auto;
+  box-shadow: var(--shadow-md);
+}
+.app--workspace .canvas-notice {
+  padding: 12px 16px;
+  margin: 0;
+  border-radius: 10px;
+  border-color: var(--border-default);
+  background: var(--bg-surface-raised);
+  box-shadow: none;
+}
+.canvas-notice .feedback,
+.canvas-notice .hint {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  animation: none;
+  color: var(--text-secondary);
+}
+.canvas-notice .feedback.success {
+  border: 0;
+}
+.canvas-notice .eyebrow {
+  color: var(--text-link);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.canvas-notice .feedback.success .eyebrow {
+  color: var(--success);
+}
+.canvas-notice p {
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 7px;
+}
+.canvas-notice-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+}
+.canvas-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  color: var(--text-secondary);
+  margin: -6px -8px -6px 0;
+  border-radius: 5px;
+}
+.canvas-dismiss:hover {
+  background: var(--bg-surface-hover);
+}
+.onboarding {
+  padding: 0;
+}
+.skip-guidance {
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--text-tertiary);
+  min-height: 32px;
+  padding: 4px;
+}
+.canvas-notice .teaching-concept {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.canvas-notice .guide-action {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.guide-check {
+  display: block;
+  font-size: 11px;
+  color: var(--text-link);
+  margin-top: 7px;
+}
+.canvas-notice .storage-warning {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.thumb-controller {
+  position: absolute;
+  z-index: 10;
+  bottom: var(--bottom-edge);
+  right: var(--edge);
+  width: 160px;
+  flex: none;
+  padding: 8px;
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  user-select: none;
+}
+.thumb-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-align: center;
+  margin-bottom: 4px;
+  letter-spacing: 1px;
+}
+.direction-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 46px);
+  grid-template-rows: repeat(3, 44px);
+  gap: 2px;
+  justify-content: center;
+}
+.direction-pad button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface-raised);
+  color: var(--text-link);
+  touch-action: none;
+  user-select: none;
+  padding: 0;
+  border-radius: 6px;
+}
+.direction-pad button:disabled {
+  color: var(--button-disabled-text);
+  background: var(--button-disabled-bg);
+  border-color: var(--border-default);
+  opacity: 1;
+  cursor: default;
+}
+.direction-pad button.pressed,
+.direction-pad button:not(:disabled):active {
+  color: var(--button-primary-text);
+  background: var(--button-primary-bg);
+}
+.pad-up {
+  grid-area: 1 / 2;
+}
+.pad-left {
+  grid-area: 2 / 1;
+}
+.pad-right {
+  grid-area: 2 / 3;
+}
+.pad-down {
+  grid-area: 3 / 2;
+}
+.pad-up svg {
+  transform: rotate(-90deg);
+}
+.pad-left svg {
+  transform: rotate(180deg);
+}
+.pad-down svg {
+  transform: rotate(90deg);
+}
+.pad-center {
+  grid-area: 2 / 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.app--workspace .touch-workspace .workspace-message-area {
+  left: calc((100% - 184px) / 2);
+  width: min(440px, calc(100% - 208px));
+}
+.touch-workspace[data-guide-step="move"] .direction-pad button:not(:disabled) {
+  border-color: var(--brand-primary);
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+}
+.canvas-workspace[data-guide-step="check"] .canvas-check {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 3px;
+}
+.app-panel {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: min(500px, 100%);
+  max-width: 100%;
+  max-height: 100dvh;
+  height: 100dvh;
+  margin: 0;
+  padding: 0 24px 24px;
+  border: 0;
+  border-right: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: var(--shadow-lg);
+}
+.app-panel::backdrop {
+  background: var(--overlay);
+}
+.panel-heading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  padding: 20px 0 14px;
+  margin-bottom: 22px;
+}
+.panel-heading h2 {
+  font-size: 38px;
+  line-height: 1;
+}
+.panel-heading button {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.study-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 10px;
+}
+.study-heading h3 {
+  font-size: 28px;
+  font-family: var(--font-heading);
+}
+.study-heading .chapter-progress {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--text-tertiary);
+}
+.studies-list section > button {
+  width: 100%;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 6px;
+  border-bottom: 1px solid var(--border-default);
+  text-align: left;
+  font-size: 13px;
+}
+.studies-list section > button > span:first-child {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.studies-list section > button .material-icon {
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  color: var(--text-link);
+}
+.studies-list section > button[aria-current] {
+  background: var(--brand-primary-subtle);
+}
+.principle-content > p {
+  font-size: 16px;
+  line-height: 1.8;
+}
+.principle-content > svg {
+  width: 100%;
+  background: var(--canvas-paper);
+  background-image: var(--paper-texture);
+  margin: 20px 0;
+}
+.principle-content > label {
+  font-size: 12px;
+  line-height: 1.7;
+  display: block;
+}
+.principle-content > input {
+  width: 100%;
+  accent-color: var(--brand-primary);
+  margin: 20px 0 28px;
+}
+.control-reference {
+  border-top: 1px solid var(--border-default);
+  padding-top: 16px;
+  margin: 0 0 20px;
+}
+.control-reference h3 {
+  font-size: 28px;
+  margin: 0 0 10px;
+}
+.control-reference p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: 8px 0;
+}
+.workspace-debug {
+  position: fixed;
+  bottom: 16px;
+  left: 12px;
+  z-index: 20;
+  margin: 0;
+  padding: 6px 10px;
+  max-width: calc(100vw - 24px);
+  max-height: 50dvh;
+  overflow: auto;
+  background: var(--bg-surface-raised);
+  box-shadow: var(--shadow-md);
+}
+.workspace-debug:not([open]) {
+  font-size: 10px;
+}
+@media (min-width: 900px) {
+  .app--workspace .touch-workspace .workspace-message-area {
+    left: 50%;
+    width: min(440px, calc(100% - 390px));
+  }
+}
+@media (max-width: 700px) and (min-height: 561px) {
+  .app.app--workspace {
+    --edge: 12px;
+    --bottom-edge: max(12px, env(safe-area-inset-bottom));
+    --status-clearance: 244px;
+  }
+  .workspace-navigation {
+    width: min(340px, calc(100% - 24px));
+  }
+  .lessons-trigger {
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .workspace-objective {
+    margin-top: 14px;
+  }
+  .workspace-objective h1 {
+    font-size: 27px;
+  }
+  .workspace-objective .objective {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .lesson-location {
+    font-size: 10px;
+  }
+  .app--workspace .canvas-toolbar {
+    top: 12px;
+    right: 12px;
+    left: auto;
+    transform: none;
+    flex-direction: row;
+    padding: 4px;
+    gap: 4px;
+    border-radius: 10px;
+  }
+  .tool-divider {
+    height: 26px;
+    width: 1px;
+    margin: 0 2px;
+  }
+  .app--workspace .canvas-toolbar .primary {
+    width: 44px;
+    min-width: 44px;
+    font-size: 10px;
+    padding: 0;
+  }
+  .app--workspace .composition-stage {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  [data-tooltip]::after {
+    left: 50%;
+    top: calc(100% + 10px);
+    transform: translateX(-50%);
+  }
+  .app--workspace .canvas-notice {
+    padding: 10px 12px;
+  }
+  .app--workspace .workspace-message-area {
+    max-height: min(220px, 40dvh);
+  }
+  .canvas-notice p,
+  .canvas-notice .guide-action {
+    font-size: 12px;
+  }
+  .canvas-notice .eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.4px;
+    gap: 4px;
+  }
+  .canvas-notice .eyebrow svg {
+    width: 16px;
+    height: 16px;
+  }
+  .canvas-notice .teaching-concept {
+    font-size: 11px;
+  }
+  .skip-guidance {
+    font-size: 10px;
+    min-height: 28px;
+  }
+  .canvas-notice-heading {
+    align-items: start;
+    gap: 4px;
+  }
+  .canvas-dismiss {
+    width: 32px;
+    height: 32px;
+    margin: -4px -6px -4px 0;
+  }
+  .guide-check {
+    font-size: 10px;
+  }
+  .app-panel {
+    padding: 0 18px 20px;
+  }
+  .workspace-debug {
+    left: 6px;
+    bottom: 6px;
+  }
+}
+@media (max-height: 560px) and (orientation: landscape) {
+  .app.app--workspace {
+    --edge: 12px;
+    --status-clearance: 160px;
+  }
+  .workspace-navigation {
+    width: 220px;
+  }
+  .workspace-objective {
+    margin-top: 14px;
+  }
+  .workspace-objective h1 {
+    font-size: 25px;
+  }
+  .workspace-objective .objective {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .app--workspace .composition-stage {
+    padding-top: 84px;
+    padding-left: 250px;
+    padding-right: 24px;
+  }
+  .app--workspace .canvas-toolbar {
+    top: 12px;
+  }
+  .app--workspace .workspace-message-area {
+    max-height: 140px;
+  }
+  .canvas-notice p,
+  .canvas-notice .guide-action {
+    font-size: 12px;
+  }
+  .canvas-notice .teaching-concept {
+    font-size: 11px;
+  }
+}
+
+/* Only the movement control opts out of iOS editing gestures. Lesson text stays selectable. */
+.thumb-controller,
+.thumb-controller * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: none;
+}
+.thumb-controller .thumb-label,
+.thumb-controller .pad-center,
+.thumb-controller svg {
+  pointer-events: none;
+}
+.app--workspace .canvas-toolbar .canvas-check > .material-icon {
+  width: 22px;
+  height: 22px;
+}
+@media (max-width: 340px) {
+  .lessons-trigger {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+  .lessons-trigger span {
+    display: none;
+  }
+  .app--workspace .canvas-toolbar {
+    right: 8px;
+  }
+}

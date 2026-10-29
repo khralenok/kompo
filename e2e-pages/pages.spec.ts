@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
-
-test("production build works from a GitHub Pages repository subpath", async ({
+test("workspace routes and assets work under a GitHub Pages repository path", async ({
   page,
   request,
 }) => {
@@ -14,14 +13,13 @@ test("production build works from a GitHub Pages repository subpath", async ({
   page.on("requestfailed", (r) =>
     failures.push(`${r.url()}: ${r.failure()?.errorText}`),
   );
-  // Root URLs must fail; otherwise a broken absolute asset URL could pass QA.
   expect((await request.get("/fonts/alumni-sans-900-0.ttf")).status()).toBe(
     404,
   );
   expect((await request.get("/textures/paper-grain.svg")).status()).toBe(404);
   await page.goto("/kompo/");
-  await expect(page).toHaveTitle("KOMPO — Learn to see.");
-  await expect(page.getByRole("button", { name: "KOMPO home" })).toBeVisible();
+  await expect(page).toHaveURL(/\/kompo\/#\/exercise\/alignment-1$/);
+  await expect(page).toHaveTitle("A common ground — KOMPO");
   await page.evaluate(async () => {
     await Promise.all([
       document.fonts.load('900 32px "Alumni Sans"'),
@@ -35,8 +33,7 @@ test("production build works from a GitHub Pages repository subpath", async ({
   expect(
     loaded.some((url) => url.includes("/kompo/textures/paper-grain.svg")),
   ).toBe(true);
-  await page.getByRole("button", { name: "Begin exploring" }).click();
-  await page.getByRole("button", { name: "Start the study" }).click();
+  await page.getByRole("button", { name: "Skip guidance" }).click();
   await page.getByRole("button", { name: "Show hint" }).click();
   const points = await page.locator(".puzzle-svg").evaluate((el) => {
     const m = (el as unknown as SVGSVGElement).getScreenCTM()!;
@@ -51,24 +48,23 @@ test("production build works from a GitHub Pages repository subpath", async ({
   await page.getByRole("button", { name: "Check composition" }).click();
   await expect(page.getByText("RELATIONSHIP FOUND")).toBeVisible();
   await page.reload();
-  await expect(page.locator(".chapter-progress").first()).toContainText(
-    "1 OF 5 COMPLETE",
-  );
   expect(
     await page.evaluate(() =>
       JSON.parse(localStorage.getItem("kompo.progress.v1") ?? "[]"),
     ),
   ).toContain("alignment-1");
-  await page.goto("/kompo/?debug=true");
+  await expect(page.locator(".onboarding")).toHaveCount(0);
+  await page.getByRole("button", { name: "Choose an exercise" }).click();
+  await page.getByRole("button", { name: /03 Different forms/ }).click();
+  await expect(page).toHaveURL(/\/kompo\/#\/exercise\/alignment-3$/);
+  await page.reload();
+  await expect(page.locator(".workspace-objective h1")).toHaveText(
+    "Different forms. One line.",
+  );
+  await page.goBack();
+  await expect(page).toHaveURL(/alignment-1$/);
+  await page.goto("/kompo/?debug=true#/exercise/rhythm-1");
   await page.getByText("Developer tools", { exact: true }).click();
-  await page.getByLabel("Jump to exercise").selectOption("2");
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Show hint" }).click();
-  await expect(page.locator(".guides")).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+  await expect(page.getByLabel("Jump to exercise")).toHaveValue("10");
   expect(failures).toEqual([]);
 });

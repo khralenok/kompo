@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent, KeyboardEvent, CSSProperties } from "react";
 import type { Level, Shape } from "../game/types";
 import { hintTargets, assistPosition } from "../game/guidance";
 import { anchor } from "../game/validation";
+import { constrainPosition, pickTouchShape } from "../game/movement";
 export function Piece({ s }: { s: Shape }) {
   const props = { fill: s.fill };
   return (
@@ -34,34 +35,59 @@ export function Canvas({
   assist = false,
   disabled = false,
   highlightedIds = [],
+  selectedId = null,
+  onSelect,
+  onTouch,
+  layoutKey = 0,
 }: {
   level: Level;
+  layoutKey?: number;
   shapes: Shape[];
   onChange: (s: Shape[]) => void;
   guides: boolean;
   assist?: boolean;
   disabled?: boolean;
   highlightedIds?: string[];
+  selectedId?: string | null;
+  onSelect?: (id: string, mode?: "mouse" | "touch") => void;
+  onTouch?: () => void;
 }) {
-  const { width, height, inset } = level.frame;
+  const { width, height } = level.frame;
   const svg = useRef<SVGSVGElement>(null);
   const [renderedWidth, setRenderedWidth] = useState(width);
-  useEffect(() => {
+  const [frameWidth, setFrameWidth] = useState(width);
+  useLayoutEffect(() => {
     const element = svg.current;
     if (!element) return;
-    const observer = new ResizeObserver(([entry]) =>
-      setRenderedWidth(entry.contentRect.width),
-    );
-    observer.observe(element);
+    const parent = element.parentElement!;
+    const measure = () => {
+      const style = getComputedStyle(parent);
+      const availableWidth =
+        parent.clientWidth -
+        parseFloat(style.paddingLeft) -
+        parseFloat(style.paddingRight);
+      const availableHeight =
+        parent.clientHeight -
+        parseFloat(style.paddingTop) -
+        parseFloat(style.paddingBottom);
+      const size = Math.max(
+        1,
+        Math.min(availableWidth, (availableHeight * width) / height),
+      );
+      setFrameWidth(size);
+      setRenderedWidth(size);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(parent);
     return () => observer.disconnect();
-  }, []);
+  }, [width, height, layoutKey]);
   const drag = useRef<{
     id: string;
     pointer: number;
     dx: number;
     dy: number;
   } | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
   function point(e: PointerEvent<SVGSVGElement>) {
     const matrix = svg.current?.getScreenCTM();
     if (!matrix) return null;
@@ -72,34 +98,31 @@ export function Canvas({
       shapes.map((s) => {
         if (s.id !== id || s.locked) return s;
         if (assist && snap) ({ x, y } = assistPosition(level, s, x, y));
-        const r = (s.rotation * Math.PI) / 180;
-        const w =
-          (Math.abs(s.width * Math.cos(r)) + Math.abs(s.height * Math.sin(r))) /
-          2;
-        const h =
-          (Math.abs(s.width * Math.sin(r)) + Math.abs(s.height * Math.cos(r))) /
-          2;
-        return {
-          ...s,
-          x:
-            s.axis === "y"
-              ? s.x
-              : Math.max(w + inset, Math.min(width - w - inset, x)),
-          y:
-            s.axis === "x"
-              ? s.y
-              : Math.max(h + inset, Math.min(height - h - inset, y)),
-        };
+        return constrainPosition(s, x, y, level.frame);
       }),
     );
   }
   function down(e: PointerEvent<SVGSVGElement>) {
+    if (e.pointerType === "touch") onTouch?.();
     if (disabled || e.button !== 0) return;
     const id = (e.target as Element)
       .closest("[data-piece]")
       ?.getAttribute("data-piece");
-    const s = shapes.find((s) => s.id === id);
+    const touchPoint = e.pointerType === "touch" ? point(e) : null;
+    const s = touchPoint
+      ? pickTouchShape(
+          shapes,
+          touchPoint.x,
+          touchPoint.y,
+          renderedWidth / width,
+        )
+      : shapes.find((s) => s.id === id);
     if (!s || s.locked) return;
+    onSelect?.(s.id, e.pointerType === "touch" ? "touch" : "mouse");
+    if (e.pointerType === "touch") {
+      e.preventDefault();
+      return;
+    }
     const p = point(e);
     if (!p) return;
     e.preventDefault();
@@ -110,7 +133,6 @@ export function Canvas({
       dx: p.x - s.x,
       dy: p.y - s.y,
     };
-    setSelected(s.id);
   }
   function keyboard(e: KeyboardEvent<SVGGElement>, s: Shape) {
     if (disabled || s.locked) return;
@@ -124,7 +146,6 @@ export function Canvas({
     if (offset[e.key]) {
       e.preventDefault();
       move(s.id, s.x + offset[e.key][0], s.y + offset[e.key][1], false);
-      setSelected(s.id);
     }
   }
   return (
@@ -134,13 +155,14 @@ export function Canvas({
       viewBox={`0 0 ${width} ${height}`}
       style={
         {
-          width: `min(100%, ${(width / height) * 62}vh)`,
+          width: `${frameWidth}px`,
+          height: `${(frameWidth * height) / width}px`,
           aspectRatio: `${width} / ${height}`,
           "--canvas-label-size": `${Math.max(12, (10 * width) / Math.max(1, renderedWidth))}px`,
         } as CSSProperties
       }
       role="group"
-      aria-label={`${level.title}. Drag colored pieces or focus a piece and use arrow keys.`}
+      aria-label={`${level.title}. Select a colored form. Drag with a mouse, use the touch controller, or use arrow keys.`}
       onPointerDown={down}
       onPointerMove={(e) => {
         const d = drag.current;
@@ -294,15 +316,44 @@ export function Canvas({
             tabIndex={s.locked || disabled ? undefined : 0}
             role={s.locked ? undefined : "button"}
             aria-label={`Piece ${s.id}, ${s.fill === "#D12F26" ? "red" : s.fill === "#D8AF58" ? "ochre" : "black"} ${s.type}. ${s.locked ? "Fixed." : "Use arrow keys to move; Shift for larger steps."}`}
-            className={s.locked ? "piece locked" : "piece movable"}
-            onFocus={() => setSelected(s.id)}
+            className={
+              s.locked
+                ? "piece locked"
+                : `piece movable ${selectedId === s.id ? "is-selected" : ""}`
+            }
+            aria-pressed={s.locked ? undefined : selectedId === s.id}
+            onFocus={() => onSelect?.(s.id)}
             onKeyDown={(e) => keyboard(e, s)}
           >
             <rect
-              x={s.x - Math.max(86, s.width + 20) / 2}
-              y={s.y - Math.max(86, s.height + 20) / 2}
-              width={Math.max(86, s.width + 20)}
-              height={Math.max(86, s.height + 20)}
+              x={
+                s.x -
+                Math.max(
+                  86,
+                  (44 * width) / Math.max(1, renderedWidth),
+                  s.width + 20,
+                ) /
+                  2
+              }
+              y={
+                s.y -
+                Math.max(
+                  86,
+                  (44 * width) / Math.max(1, renderedWidth),
+                  s.height + 20,
+                ) /
+                  2
+              }
+              width={Math.max(
+                86,
+                (44 * width) / Math.max(1, renderedWidth),
+                s.width + 20,
+              )}
+              height={Math.max(
+                86,
+                (44 * width) / Math.max(1, renderedWidth),
+                s.height + 20,
+              )}
               fill="transparent"
             />
             {highlightedIds.includes(s.id) && (
@@ -318,7 +369,7 @@ export function Canvas({
               />
             )}
             <Piece s={s} />
-            {selected === s.id && !s.locked && (
+            {selectedId === s.id && !s.locked && (
               <rect
                 className="selection"
                 x={s.x - s.width / 2 - 7}

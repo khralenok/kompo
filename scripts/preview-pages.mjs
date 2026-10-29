@@ -8,6 +8,7 @@ await stat(resolve(root, "index.html")).catch(() => {
   throw new Error("Run npm run build before previewing GitHub Pages.");
 });
 const base = "/kompo/";
+const port = Number(process.env.KOMPO_PAGES_PORT ?? 4173);
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -48,6 +49,6 @@ createServer(async (req, res) => {
     res.writeHead(404);
     res.end("Not found");
   }
-}).listen(4173, "127.0.0.1", () =>
-  console.log("KOMPO Pages preview: http://127.0.0.1:4173/kompo/"),
+}).listen(port, "127.0.0.1", () =>
+  console.log(`KOMPO Pages preview: http://127.0.0.1:${port}/kompo/`),
 );
