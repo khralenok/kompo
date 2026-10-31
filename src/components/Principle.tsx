@@ -1,3 +1,5 @@
+import { Sensei } from "./sensei/Sensei";
+import { principleHighlights } from "../game/dialogue";
 import { useState } from "react";
 import { chapters, colors } from "../game/levels";
 import type { ChapterId, Shape } from "../game/types";
@@ -55,6 +57,13 @@ export function Principle({
           opacity={demo / 100}
         />
       </svg>
+      <aside className="principle-sensei-highlight">
+        <Sensei
+          pose={principleHighlights[chapter].pose}
+          dialogueKey={chapter}
+        />
+        <p>{principleHighlights[chapter].text}</p>
+      </aside>
       <label htmlFor="principle-demo">{current.demo}</label>
       <input
         id="principle-demo"

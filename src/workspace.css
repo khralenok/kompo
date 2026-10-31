@@ -699,3 +699,241 @@ body {
     right: 8px;
   }
 }
+
+/* Dialogue is a separate screen state; the workspace never reserves room for speech. */
+.canvas-workspace {
+  --status-clearance: 24px;
+}
+.canvas-workspace.touch-workspace {
+  --status-clearance: 196px;
+}
+.app--workspace .composition-stage {
+  padding: 84px 24px var(--status-clearance);
+}
+.sensei {
+  width: 220px;
+  line-height: 0;
+  pointer-events: none;
+}
+.sensei svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.sensei-modal {
+  box-sizing: border-box;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sensei-modal[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sensei-modal::backdrop {
+  background: rgb(25 25 24 / 48%);
+}
+.sensei-speech {
+  box-sizing: border-box;
+  position: relative;
+  width: min(760px, 100%);
+  flex-shrink: 0;
+  margin-top: 100px;
+  padding: 26px 28px 26px 228px;
+  border: 1px solid var(--border-strong);
+  border-top: 3px solid var(--text-link);
+  border-radius: 6px;
+  background: var(--bg-surface-raised);
+  box-shadow: var(--shadow-lg);
+}
+.sensei-speech > .sensei {
+  position: absolute;
+  width: 260px;
+  bottom: 0;
+  left: -30px;
+}
+.sensei-speech--celebration > .sensei {
+  width: 280px;
+  left: -40px;
+}
+.sensei-speech-copy {
+  position: relative;
+}
+.sensei-name {
+  display: block;
+  width: fit-content;
+  padding: 3px 10px;
+  margin-bottom: 14px;
+  font-family: "Alumni Sans", sans-serif;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
+  background: var(--text-link);
+  color: white;
+}
+.sensei-speech .canvas-dismiss {
+  position: absolute;
+  top: -6px;
+  right: 0;
+}
+.sensei-speech h2 {
+  margin: 0 24px 14px 0;
+  font-family: "Alumni Sans", sans-serif;
+  font-size: 36px;
+  font-weight: 900;
+  line-height: 1.05;
+}
+.sensei-speech p {
+  margin: 0 0 18px;
+  font-size: 16px;
+  line-height: 1.55;
+}
+.sensei-speech .sensei-controls {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.sensei-speech button.primary {
+  min-height: 44px;
+  padding: 10px 20px;
+}
+.sensei-action {
+  margin-left: 12px;
+  padding: 10px;
+  min-height: 44px;
+  color: var(--text-link);
+  background: transparent;
+  text-decoration: underline;
+}
+.sensei-gallery {
+  padding: 24px;
+  max-width: 1200px;
+  margin: auto;
+}
+.sensei-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+.sensei-gallery figure {
+  margin: 0;
+  padding: 16px;
+  background: var(--bg-surface-raised);
+  text-align: center;
+}
+.sensei-gallery .sensei {
+  width: 100%;
+}
+.sensei-gallery figcaption {
+  margin-top: 12px;
+  line-height: 1.5;
+}
+.principle-sensei-highlight {
+  position: relative;
+  margin: 48px 0 16px;
+  padding: 20px 16px 20px 150px;
+  min-height: 140px;
+  background: var(--bg-surface-raised);
+  border-left: 3px solid var(--text-link);
+}
+.principle-sensei-highlight .sensei {
+  position: absolute;
+  left: -10px;
+  bottom: 0;
+  width: 170px;
+}
+.principle-sensei-highlight p {
+  margin: 0;
+  font-size: 14px;
+}
+@media (max-width: 700px) {
+  .sensei-modal {
+    padding: 20px 12px;
+  }
+  .sensei-speech {
+    margin-top: 160px;
+    padding: 20px;
+  }
+  .sensei-speech > .sensei,
+  .sensei-speech--celebration > .sensei {
+    width: 200px;
+    left: 50%;
+    bottom: calc(100% - 12px);
+    transform: translateX(-50%);
+  }
+  .sensei-speech h2 {
+    font-size: 32px;
+  }
+  .app--workspace .composition-stage {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+@media (max-height: 600px) {
+  .sensei-modal[open] {
+    align-items: flex-start;
+  }
+  .sensei-modal {
+    padding: 20px 24px;
+  }
+  .sensei-speech {
+    margin-top: 12px;
+    padding: 20px 20px 20px 170px;
+  }
+  .sensei-speech > .sensei,
+  .sensei-speech--celebration > .sensei {
+    width: 200px;
+    left: -30px;
+    bottom: 0;
+    transform: none;
+  }
+  .sensei-speech h2 {
+    font-size: 28px;
+  }
+  .sensei-speech p {
+    font-size: 14px;
+  }
+}
+@media (max-width: 400px) and (max-height: 600px) {
+  .sensei-modal {
+    padding: 16px 12px;
+  }
+  .sensei-speech {
+    margin-top: 145px;
+    padding: 18px;
+  }
+  .sensei-speech > .sensei,
+  .sensei-speech--celebration > .sensei {
+    width: 180px;
+    left: 50%;
+    bottom: calc(100% - 12px);
+    transform: translateX(-50%);
+  }
+}
+@media (max-height: 560px) and (orientation: landscape) {
+  .app--workspace .touch-workspace .composition-stage {
+    padding-bottom: 24px;
+    padding-right: 200px;
+  }
+}
+/* Pin the top-layer surface to the viewport even when SVG artwork overflows. */
+.sensei-modal {
+  width: 100vw;
+  height: 100dvh;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+.sensei-speech {
+  min-width: 0;
+  max-width: 100%;
+}

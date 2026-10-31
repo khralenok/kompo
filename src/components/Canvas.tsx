@@ -118,6 +118,12 @@ export function Canvas({
         )
       : shapes.find((s) => s.id === id);
     if (!s || s.locked) return;
+    // Pointer selection and keyboard selection must identify the same form.
+    // preventDefault below suppresses the browser's usual focus behavior.
+    const selectedElement = [
+      ...(svg.current?.querySelectorAll<SVGGElement>("[data-piece]") ?? []),
+    ].find((element) => element.getAttribute("data-piece") === s.id);
+    selectedElement?.focus({ preventScroll: true });
     onSelect?.(s.id, e.pointerType === "touch" ? "touch" : "mouse");
     if (e.pointerType === "touch") {
       e.preventDefault();
@@ -135,7 +141,7 @@ export function Canvas({
     };
   }
   function keyboard(e: KeyboardEvent<SVGGElement>, s: Shape) {
-    if (disabled || s.locked) return;
+    if (disabled || s.locked || e.altKey || e.ctrlKey || e.metaKey) return;
     const delta = e.shiftKey ? 10 : 3;
     const offset: Record<string, [number, number]> = {
       ArrowLeft: [-delta, 0],

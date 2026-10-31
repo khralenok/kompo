@@ -8,15 +8,15 @@ import {
 import { Canvas } from "./Canvas";
 import { Icon } from "./Icon";
 import { ThumbController } from "./ThumbController";
+import { SenseiDialogue } from "./sensei/SenseiDialogue";
+import {
+  completionDialogue,
+  mistakeDialogue,
+  type Dialogue,
+} from "../game/dialogue";
 import { validate } from "../game/validation";
 import { settleControllerPosition } from "../game/guidance";
 import { constrainPosition } from "../game/movement";
-import {
-  readDraft,
-  readLearning,
-  recordLearning,
-  saveDraft,
-} from "../game/session";
 import type { InputMode } from "../game/session";
 import type { Level, Shape, ValidationResult } from "../game/types";
 export type CanvasWorkspaceHandle = {
@@ -26,6 +26,8 @@ export type CanvasWorkspaceHandle = {
 };
 type Props = {
   level: Level;
+  completed: string[];
+  panelOpen: boolean;
   layoutKey: number;
   nextLabel: string;
   onNext: () => void;
@@ -33,12 +35,14 @@ type Props = {
   onComplete: () => void;
   onShapesChange: (s: Shape[]) => void;
   debugGuides?: boolean;
-  storageError?: boolean;
 };
+type MessageKind = "intro" | "hint" | "feedback" | "idle";
 export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
   function CanvasWorkspace(
     {
       level,
+      completed,
+      panelOpen,
       layoutKey,
       nextLabel,
       onNext,
@@ -46,11 +50,12 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
       onComplete,
       onShapesChange,
       debugGuides = false,
-      storageError = false,
     },
     ref,
   ) {
-    const [shapes, setShapes] = useState(() => readDraft(level));
+    const [shapes, setShapes] = useState(() =>
+      level.shapes.map((s) => ({ ...s })),
+    );
     const [mode, setMode] = useState<InputMode>(() =>
       navigator.maxTouchPoints > 0 && matchMedia("(pointer: coarse)").matches
         ? "touch"
@@ -58,143 +63,67 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
     );
     const [selected, setSelected] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<ValidationResult | null>(null);
-    const [dismissed, setDismissed] = useState(false);
+    const [celebration, setCelebration] = useState<Dialogue | null>(null);
+    const [mistakes, setMistakes] = useState(0);
     const [hint, setHint] = useState(false);
-    const [guideGuides, setGuideGuides] = useState(true);
-    const [hintMessage, setHintMessage] = useState(false);
-    const [guideActive, setGuideActive] = useState(() => {
-      const l = readLearning();
-      return (
-        !l.lessons.includes(level.id) ||
-        !l.controls.includes(
-          navigator.maxTouchPoints > 0 &&
-            matchMedia("(pointer: coarse)").matches
-            ? "touch"
-            : "mouse",
-        )
-      );
-    });
-    const [step, setStep] = useState<"select" | "move" | "check">(() =>
-      readLearning().controls.includes(
-        navigator.maxTouchPoints > 0 && matchMedia("(pointer: coarse)").matches
-          ? "touch"
-          : "mouse",
-      )
-        ? "check"
-        : "select",
-    );
-    const [localStorageError, setLocalStorageError] = useState(false);
-    const [storageDismissed, setStorageDismissed] = useState(false);
+    const [dialogue, setDialogue] = useState<MessageKind | null>("intro");
+    const [dialogueEvent, setDialogueEvent] = useState(0);
+    const idleOffered = useRef(false);
     const controllerStart = useRef<Shape | null>(null);
-    const selectedAt = useRef<{ x: number; y: number } | null>(null);
     const toolbar = useRef<HTMLDivElement>(null);
     const shapeRef = useRef(shapes);
     shapeRef.current = shapes;
     const successful = feedback?.success === true;
     useEffect(() => onShapesChange(shapes), [shapes, onShapesChange]);
-    useEffect(() => {
-      const timer = setTimeout(() => {
-        if (!saveDraft(level, shapes)) setLocalStorageError(true);
-      }, 180);
-      return () => clearTimeout(timer);
-    }, [level, shapes]);
-    useEffect(() => {
-      const flush = () => saveDraft(level, shapeRef.current);
-      window.addEventListener("pagehide", flush);
-      return () => {
-        flush();
-        window.removeEventListener("pagehide", flush);
-      };
-    }, [level]);
-    function stale() {
-      setFeedback(null);
-      setDismissed(false);
-      setHintMessage(false);
+    function showDialogue(kind: MessageKind) {
+      controllerStart.current = null;
+      setDialogue(kind);
+      setDialogueEvent((n) => n + 1);
+    }
+    function dismiss() {
+      // Hints are read once; only their useful canvas guides remain during play.
+      if (dialogue === "hint") setHint(true);
+      setDialogue(null);
     }
     function update(next: Shape[]) {
       setShapes(next);
-      stale();
-      if (guideActive && step === "move" && selectedAt.current) {
-        const focus = next.find((s) => s.id === level.teaching.focusId)!;
-        if (
-          Math.hypot(
-            focus.x - selectedAt.current.x,
-            focus.y - selectedAt.current.y,
-          ) >= 3
-        )
-          setStep("check");
-      }
+      setFeedback(null);
     }
     function select(id: string, input?: InputMode) {
       if (id !== selected) controllerStart.current = null;
-      if (input) {
-        setMode(input);
-        if (!readLearning().controls.includes(input) && !guideActive) {
-          setGuideActive(true);
-          if (id === level.teaching.focusId) {
-            const s = shapeRef.current.find((s) => s.id === id)!;
-            selectedAt.current = { x: s.x, y: s.y };
-            setStep("move");
-          } else setStep("select");
-        }
-      }
+      if (input) setMode(input);
       setSelected(id);
-      if (guideActive && step === "select" && id === level.teaching.focusId) {
-        const s = shapeRef.current.find((s) => s.id === id)!;
-        selectedAt.current = { x: s.x, y: s.y };
-        setStep("move");
-      }
-    }
-    function acknowledge() {
-      if (!recordLearning(level.id, mode)) setLocalStorageError(true);
-      setGuideActive(false);
     }
     function replayGuidance() {
-      setGuideActive(true);
-      setGuideGuides(true);
-      setStep("select");
-      setSelected(null);
-      setFeedback(null);
-      setHintMessage(false);
-      setDismissed(false);
+      showDialogue("intro");
     }
     function reset() {
       controllerStart.current = null;
+      setMistakes(0);
+      setCelebration(null);
       setShapes(level.shapes.map((s) => ({ ...s })));
       setSelected(null);
-      stale();
+      setFeedback(null);
       setHint(false);
-      setHintMessage(false);
-      if (guideActive)
-        setStep(readLearning().controls.includes(mode) ? "check" : "select");
     }
     function check(bypass = false) {
       const result = bypass
         ? { success: true, message: "Completed through developer bypass." }
         : validate(level, shapes);
+      if (result.success)
+        setCelebration(completionDialogue(level, completed, mistakes));
+      else setMistakes((n) => n + 1);
       setFeedback(result);
-      setDismissed(false);
-      setHintMessage(false);
-      if (result.success && !successful) {
-        if (!bypass) acknowledge();
-        onComplete();
-      }
+      showDialogue("feedback");
+      if (result.success && !successful) onComplete();
     }
     useImperativeHandle(ref, () => ({
       reset,
       complete: () => check(true),
       replayGuidance,
     }));
-    function dismiss() {
-      setStorageDismissed(true);
-      setDismissed(true);
-      setHintMessage(false);
-      toolbar.current
-        ?.querySelector<HTMLButtonElement>(".canvas-check")
-        ?.focus({ preventScroll: true });
-    }
     function move(dx: number, dy: number) {
-      if (!selected || successful) return;
+      if (!selected || successful || dialogue) return;
       if (!controllerStart.current)
         controllerStart.current =
           shapeRef.current.find((s) => s.id === selected) ?? null;
@@ -209,54 +138,75 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
     function release() {
       const start = controllerStart.current;
       controllerStart.current = null;
-      if (!hint || !selected || successful || !start) return;
-      const next = shapeRef.current.map((s) => {
-        if (s.id !== selected) return s;
-        const p = settleControllerPosition(level, s, start);
-        return constrainPosition(s, p.x, p.y, level.frame);
-      });
+      if (!hint || !selected || successful || !start || dialogue) return;
+      const next = shapeRef.current.map((s) =>
+        s.id === selected
+          ? constrainPosition(s, ...position(s, start), level.frame)
+          : s,
+      );
       shapeRef.current = next;
       update(next);
     }
-    const message = feedback && !dismissed ? feedback : null;
-    const notice = message !== null || hintMessage;
-    const relatedIds =
-      message && !message.success
-        ? shapes
-            .filter((s) =>
-              new RegExp(`\\bpiece ${s.id}\\b`, "i").test(message.message),
-            )
-            .map((s) => s.id)
-        : guideActive && step !== "check"
-          ? [level.teaching.focusId]
-          : [];
-    const focus = level.shapes.find((s) => s.id === level.teaching.focusId)!;
-    const guidance =
-      step === "select"
-        ? `Select form ${focus.id}, the ${focus.fill === "#D8AF58" ? "ochre" : "red"} ${focus.type === "rectangle" && focus.width === focus.height ? "square" : focus.type}.`
-        : step === "move"
-          ? mode === "touch"
-            ? "Tap the thumb pad to nudge. Hold an arrow to keep moving."
-            : "Drag the selected form, or use the arrow keys to move it."
-          : level.teaching.prompt;
-    const storageWarning =
-      (storageError || localStorageError) && !storageDismissed;
-    const hasStatus = notice || (guideActive && !successful) || storageWarning;
+    function position(s: Shape, start: Shape): [number, number] {
+      const p = settleControllerPosition(level, s, start);
+      return [p.x, p.y];
+    }
+    useEffect(() => {
+      if (panelOpen || dialogue || successful || idleOffered.current) return;
+      let timer: ReturnType<typeof setTimeout>;
+      function arm() {
+        clearTimeout(timer);
+        if (document.visibilityState === "visible")
+          timer = setTimeout(() => {
+            idleOffered.current = true;
+            showDialogue("idle");
+          }, 60000);
+      }
+      const events = [
+        "pointerdown",
+        "pointermove",
+        "keydown",
+        "wheel",
+      ] as const;
+      events.forEach((event) =>
+        window.addEventListener(event, arm, { passive: true }),
+      );
+      document.addEventListener("visibilitychange", arm);
+      arm();
+      return () => {
+        clearTimeout(timer);
+        events.forEach((event) => window.removeEventListener(event, arm));
+        document.removeEventListener("visibilitychange", arm);
+      };
+    }, [panelOpen, dialogue, successful, shapes, selected]);
+    const reaction = feedback?.success
+      ? celebration
+      : mistakeDialogue(mistakes);
+    const content: Dialogue =
+      dialogue === "intro"
+        ? { pose: "teaching", title: level.title, text: level.objective }
+        : dialogue === "hint"
+          ? { pose: "thoughtful", title: "A way to see it", text: level.hint }
+          : dialogue === "idle"
+            ? {
+                pose: "observant",
+                title: "Want a clue?",
+                text: "Take your time. I can offer a different way to look at this composition.",
+              }
+            : {
+                pose: reaction?.pose ?? "patient",
+                title: reaction?.title ?? "Take another look.",
+                text: feedback?.success
+                  ? (celebration?.text ?? feedback.message)
+                  : (feedback?.message ?? ""),
+                milestone: feedback?.success
+                  ? celebration?.milestone
+                  : undefined,
+              };
     return (
       <section
-        className={`canvas-section canvas-workspace ${mode === "touch" ? "touch-workspace" : ""}`}
+        className={`canvas-section canvas-workspace ${mode === "touch" && !successful ? "touch-workspace" : ""}`}
         aria-label="Interactive composition canvas"
-        data-guide-step={guideActive ? step : undefined}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && hasStatus) {
-            e.preventDefault();
-            if (notice) dismiss();
-            else {
-              setGuideActive(false);
-              setStorageDismissed(true);
-            }
-          }
-        }}
       >
         <div className="canvas-body">
           <div className="composition-stage">
@@ -265,14 +215,10 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
               layoutKey={layoutKey}
               shapes={shapes}
               onChange={update}
-              guides={
-                hint ||
-                debugGuides ||
-                (guideActive && step === "check" && guideGuides)
-              }
+              guides={hint || debugGuides}
               assist={hint}
-              disabled={successful}
-              highlightedIds={relatedIds}
+              disabled={successful || !!dialogue}
+              highlightedIds={[]}
               selectedId={selected}
               onSelect={select}
               onTouch={() => setMode("touch")}
@@ -321,10 +267,8 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
             data-tooltip={hint ? "Hide hint" : "Show hint"}
             aria-pressed={hint}
             onClick={() => {
-              setGuideGuides(false);
-              setHint(!hint);
-              setHintMessage(!hint);
-              setDismissed(true);
+              if (hint) setHint(false);
+              else showDialogue("hint");
             }}
           >
             <Icon name="lightbulb_outline" />
@@ -355,90 +299,60 @@ export const CanvasWorkspace = forwardRef<CanvasWorkspaceHandle, Props>(
             />
           </button>
         </div>
-        <div
-          className="workspace-announcements"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {hasStatus && (
-            <div
-              className="workspace-message-area"
-              tabIndex={0}
-              role="region"
-              aria-label="Exercise guidance and feedback"
-            >
-              <div className="canvas-notice">
-                {notice ? (
-                  <div
-                    className={`${message ? "feedback" : "hint"} ${message?.success ? "success" : ""}`}
-                  >
-                    <div className="canvas-notice-heading">
-                      <span className="eyebrow">
-                        <Icon
-                          name={
-                            message?.success
-                              ? "check_circle_outline"
-                              : "lightbulb_outline"
-                          }
-                        />
-                        {message
-                          ? message.success
-                            ? "RELATIONSHIP FOUND"
-                            : "LOOK AGAIN"
-                          : "A WAY TO SEE IT"}
-                      </span>
-                      <button
-                        className="canvas-dismiss"
-                        aria-label="Dismiss canvas message"
-                        onClick={dismiss}
-                      >
-                        <Icon name="close" />
-                      </button>
-                    </div>
-                    <p>{message?.message ?? level.hint}</p>
-                  </div>
-                ) : guideActive && !successful ? (
-                  <div
-                    className="onboarding"
-                    aria-label="Lesson guidance"
-                    data-step={step}
-                  >
-                    <div className="canvas-notice-heading">
-                      <span className="eyebrow">
-                        {step === "check" ? "THE PRINCIPLE" : "GETTING STARTED"}
-                      </span>
-                      <button className="skip-guidance" onClick={acknowledge}>
-                        Skip guidance
-                      </button>
-                    </div>
-                    <p className="teaching-concept">{level.teaching.concept}</p>
-                    <p className="guide-action">{guidance}</p>
-                  </div>
-                ) : (
-                  <div className="canvas-notice-heading">
-                    <span className="eyebrow">SAVING PROGRESS</span>
-                    <button
-                      className="canvas-dismiss"
-                      aria-label="Dismiss canvas message"
-                      onClick={dismiss}
-                    >
-                      <Icon name="close" />
-                    </button>
-                  </div>
-                )}
-                {storageWarning && (
-                  <p className="storage-warning">
-                    Progress is available for this session.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        {mode === "touch" && (
+
+        {dialogue && !panelOpen && (
+          <SenseiDialogue
+            key={`${level.id}:${dialogue}:${dialogueEvent}`}
+            pose={content.pose}
+            dialogueKey={`${level.id}:${dialogue}:${dialogueEvent}`}
+            title={content.title}
+            onClose={dismiss}
+            milestone={content.milestone}
+          >
+            <p>{content.text}</p>
+            {dialogue === "intro" && (
+              <p className="sensei-controls">
+                {mode === "touch"
+                  ? "Tap a form to select it, then use the thumb pad to move it."
+                  : "Drag forms to arrange them, or select one and use the arrow keys."}
+              </p>
+            )}
+            {dialogue === "intro" ? (
+              <button className="primary" onClick={dismiss}>
+                Start composing
+              </button>
+            ) : dialogue === "hint" ? (
+              <button className="primary" onClick={dismiss}>
+                Try it
+              </button>
+            ) : dialogue === "idle" ||
+              (dialogue === "feedback" && !successful && mistakes >= 2) ? (
+              <>
+                <button
+                  className="primary"
+                  onClick={() => showDialogue("hint")}
+                >
+                  Show me a hint
+                </button>
+                <button className="sensei-action" onClick={dismiss}>
+                  Keep exploring
+                </button>
+              </>
+            ) : dialogue === "feedback" && successful ? (
+              <button className="primary" onClick={onNext}>
+                {nextLabel === "All studies" ? "Explore studies" : "Continue"}
+              </button>
+            ) : (
+              <button className="primary" onClick={dismiss}>
+                Try again
+              </button>
+            )}
+          </SenseiDialogue>
+        )}
+        {mode === "touch" && !successful && (
           <ThumbController
             selectedId={selected}
-            disabled={successful}
+            disabled={!!dialogue}
             onMove={move}
             onRelease={release}
           />

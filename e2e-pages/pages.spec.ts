@@ -33,8 +33,9 @@ test("workspace routes and assets work under a GitHub Pages repository path", as
   expect(
     loaded.some((url) => url.includes("/kompo/textures/paper-grain.svg")),
   ).toBe(true);
-  await page.getByRole("button", { name: "Skip guidance" }).click();
+  await page.getByRole("button", { name: "Start composing" }).click();
   await page.getByRole("button", { name: "Show hint" }).click();
+  await page.getByRole("button", { name: "Try it", exact: true }).click();
   const points = await page.locator(".puzzle-svg").evaluate((el) => {
     const m = (el as unknown as SVGSVGElement).getScreenCTM()!;
     return [new DOMPoint(510, 170), new DOMPoint(590, 300)].map((p) =>
@@ -46,24 +47,23 @@ test("workspace routes and assets work under a GitHub Pages repository path", as
   await page.mouse.move(points[1].x, points[1].y, { steps: 8 });
   await page.mouse.up();
   await page.getByRole("button", { name: "Check composition" }).click();
-  await expect(page.getByText("RELATIONSHIP FOUND")).toBeVisible();
+  await expect(page.locator('[data-milestone="exercise"]')).toBeVisible();
   await page.reload();
-  expect(
-    await page.evaluate(() =>
-      JSON.parse(localStorage.getItem("kompo.progress.v1") ?? "[]"),
-    ),
-  ).toContain("alignment-1");
-  await expect(page.locator(".onboarding")).toHaveCount(0);
+  await expect(
+    page.getByRole("dialog", { name: "A common ground", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Start composing" }).click();
   await page.getByRole("button", { name: "Choose an exercise" }).click();
   await page.getByRole("button", { name: /03 Different forms/ }).click();
   await expect(page).toHaveURL(/\/kompo\/#\/exercise\/alignment-3$/);
   await page.reload();
-  await expect(page.locator(".workspace-objective h1")).toHaveText(
+  await expect(page.locator(".sensei-speech h2")).toHaveText(
     "Different forms. One line.",
   );
   await page.goBack();
   await expect(page).toHaveURL(/alignment-1$/);
   await page.goto("/kompo/?debug=true#/exercise/rhythm-1");
+  await page.getByRole("button", { name: "Start composing" }).click();
   await page.getByText("Developer tools", { exact: true }).click();
   await expect(page.getByLabel("Jump to exercise")).toHaveValue("10");
   expect(failures).toEqual([]);

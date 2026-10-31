@@ -1,47 +1,23 @@
-import type { CSSProperties } from "react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CanvasWorkspace } from "./components/CanvasWorkspace";
 import type { CanvasWorkspaceHandle } from "./components/CanvasWorkspace";
 import { Icon } from "./components/Icon";
 import { Panel } from "./components/Panel";
 import { Principle } from "./components/Principle";
 import { chapters, levels } from "./game/levels";
-import { readProgress, saveProgress } from "./game/storage";
-import {
-  clearDraft,
-  clearLearning,
-  exerciseHash,
-  parseExerciseHash,
-  readCurrent,
-  saveCurrent,
-} from "./game/session";
+
+import { exerciseHash, parseExerciseHash } from "./game/session";
 import type { Level, Shape } from "./game/types";
 const ignoreShapeUpdates = () => {};
 export default function App() {
-  const [completed, setCompleted] = useState(readProgress);
+  const [completed, setCompleted] = useState<string[]>([]);
   const [id, setId] = useState(
-    () =>
-      parseExerciseHash(location.hash) ??
-      readCurrent() ??
-      levels.find((l) => !readProgress().includes(l.id))?.id ??
-      levels[0].id,
+    () => parseExerciseHash(location.hash) ?? levels[0].id,
   );
   const [panel, setPanel] = useState<"studies" | "principle" | null>(null);
-  const [storageError, setStorageError] = useState(false);
   const [debugGuides, setDebugGuides] = useState(false);
   const [shapes, setShapes] = useState<Shape[]>([]);
   const workspace = useRef<CanvasWorkspaceHandle>(null);
-  const navigation = useRef<HTMLElement>(null);
-  const [contextClearance, setContextClearance] = useState(180);
-  useLayoutEffect(() => {
-    const node = navigation.current!;
-    const measure = () =>
-      setContextClearance(Math.ceil(node.getBoundingClientRect().bottom) + 16);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [id]);
   const level = levels.find((l) => l.id === id)!;
   const index = levels.indexOf(level);
   const current = chapters.find((c) => c.id === level.chapter)!;
@@ -72,27 +48,23 @@ export default function App() {
   }, [id]);
   useEffect(() => {
     document.title = `${level.title} — KOMPO`;
-    if (!saveCurrent(id)) setStorageError(true);
   }, [id, level.title]);
   function open(l: Level) {
     setPanel(null);
-    if (l.id === id) return;
+    if (l.id === id) {
+      workspace.current?.replayGuidance();
+      return;
+    }
     setId(l.id);
     location.hash = exerciseHash(l.id);
   }
   function complete() {
     const next = [...new Set([...completed, id])];
     setCompleted(next);
-    setStorageError(!saveProgress(next));
   }
   return (
-    <div
-      className="app app--workspace"
-      style={
-        { "--context-clearance": `${contextClearance}px` } as CSSProperties
-      }
-    >
-      <header className="workspace-navigation" ref={navigation}>
+    <div className="app app--workspace">
+      <header className="workspace-navigation">
         <button
           className="lessons-trigger"
           onClick={() => setPanel("studies")}
@@ -102,20 +74,15 @@ export default function App() {
           <Icon name="menu" />
           <span>Lessons</span>
         </button>
-        <div className="workspace-objective">
-          <p className="lesson-location">
-            {current.title} · {String(number).padStart(2, "0")} / 05
-          </p>
-          <h1>{level.title}</h1>
-          <p className="objective">{level.objective}</p>
-        </div>
       </header>
       <main className="workspace-main">
         <CanvasWorkspace
           key={id}
           ref={workspace}
           level={level}
-          layoutKey={contextClearance}
+          layoutKey={84}
+          completed={completed}
+          panelOpen={panel !== null}
           nextLabel={
             index === levels.length - 1
               ? "All studies"
@@ -132,7 +99,6 @@ export default function App() {
           onComplete={complete}
           onShapesChange={debug ? setShapes : ignoreShapeUpdates}
           debugGuides={debugGuides}
-          storageError={storageError}
         />
       </main>
       {panel === "studies" && (
@@ -218,15 +184,12 @@ export default function App() {
           <button
             onClick={() => {
               setCompleted([]);
-              setStorageError(!saveProgress([]));
-              clearDraft();
             }}
           >
             Clear progress
           </button>
           <button
             onClick={() => {
-              clearLearning();
               workspace.current?.replayGuidance();
             }}
           >

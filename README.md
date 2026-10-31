@@ -43,34 +43,30 @@ The test uses installed Google Chrome locally; CI installs Chromium. It checks f
 
 For a manual production preview, run `npm run preview:pages` and open `http://127.0.0.1:4173/kompo/`. `npm run preview` is also available for a normal root preview.
 
-Saved progress uses `kompo.progress.v1`, with a fallback for existing `composition.progress.v1` data on the same origin. Moving from localhost to a hosted domain starts separate browser storage; it does not transfer local progress automatically.
-
 ## Workspace and learning
 
-KOMPO opens directly in the exercise workspace. A first visit starts Alignment 01; returning visitors resume their selected exercise and saved form positions. URLs use `#/exercise/alignment-1`, so refresh, sharing, and browser Back/Forward work on GitHub Pages without server routes. The upper-left **Lessons** control opens a studies drawer; the **Lesson info** tool opens an optional interactive principle panel. Neither replaces the workspace with a landing page.
+Each exercise opens a blocking Sensei dialogue with its rule and a brief control instruction. Start composing, tap outside, press Escape, or close the dialogue to enter the workspace. The workspace contains the canvas, Lessons menu, toolbar, and touch controller when needed; it reserves no room for dialogue and repeats no lesson copy around the artwork.
 
-The first exercise teaches selection, movement, and checking through the player's actions. After the controls are learned, subsequent exercises show concise principle guidance instead. Every level's teaching concept, action prompt, and focus form are authored separately in `src/game/education.ts` and attached to its level definition. **Skip guidance** dismisses teaching without completing a puzzle. **Replay guidance** in the principle panel or workspace starts it again. Learning state is stored independently for mouse and touch controls and for each exercise.
+Hints, corrections, and celebrations are separate modal dialogue states. Read a hint once, then dismiss it to try the composition with visual guides. The Hint tool can hide those guides. Lesson info opens an interactive explanation, including controls and a Replay guidance action.
 
-Mouse users drag colored forms. Keyboard users Tab to a movable form and use arrow keys; Shift makes larger steps. Fixed forms are marked with a paper-colored dot. On touch devices, tapping selects a form without moving it. Use the directional pad at the lower right: tap for a small step; hold for continuous movement. Movement stops on release, pointer cancellation, lost capture, blur, hidden document, or exercise change. The pad is disabled until a movable form is selected. Hint snapping occurs on release, allowing a held movement to leave a guide. The controller and its descendants disable WebKit selection, callouts, native drag, and touch gestures; local non-passive touch-start and selection handlers prevent long-press editing behavior without disabling selection elsewhere in the app. Movement constraints and frame boundaries are shared across all inputs.
+Click a movable form to select it, then use the arrow keys to nudge it; Shift makes larger steps. Mouse dragging also leaves the form focused for keyboard adjustments. Tab can select forms without a pointer. On touch screens, tap a form, then tap or hold the thumb pad. Fixed forms carry a small paper-colored dot. The controller suppresses iOS selection/callouts without disabling text selection elsewhere.
 
-One floating tool panel contains **Reset**, **Hint**, **Lesson info**, and **Check** (which becomes **Next** after success). It sits at the upper edge on desktop and phones. Check/Next use centered icons, with accessible names and tooltips. Lesson context sits quietly beneath the upper-left lesson menu. Feedback and onboarding appear in a dismissible bottom-center popup. On touch screens the popup stops short of the separate lower-right thumb pad. The drawing reserves clearance for controls and messages, so they do not shift the frame or cover forms. There is no permanent guidance deck or footer legend; control explanations are available in Lesson info. Incorrect answers retain the composition and explain the relationship to adjust. Success enables the next exercise. Every exercise can be replayed from the studies drawer.
-
-Completed IDs use `kompo.progress.v1`, the current exercise uses `kompo.current.v1`, the current draft uses `kompo.draft.v1`, and onboarding uses `kompo.learning.v1`. Draft saves are debounced and flushed on leaving the exercise/page. Storage failures keep the session playable. No account or backend is involved. Fonts and procedural paper grain are bundled locally.
+Completion exists only in React memory during the current run, allowing section and course celebrations. Reloading resets completion and all piece positions. Every exercise visit gets its introduction. No localStorage, cookies, saved draft, remembered onboarding, or current-lesson storage is used. Old stored values are ignored. Explicit hash URLs still select exercises, and browser Back/Forward works; opening the root starts exercise one.
 
 ## Developer mode
 
-Append `?debug=true` before the URL hash, for example `/kompo/?debug=true#/exercise/alignment-3`. The developer panel provides level jumping, reset, completion bypass, debug guides, coordinates, progress clearing, and onboarding replay. Completion bypass intentionally saves exercise completion but does not mark educational guidance as learned.
+Append `?debug=true` before the URL hash, for example `/kompo/?debug=true#/exercise/alignment-3`. The developer panel provides level jumping, reset, completion bypass, debug guides, coordinates, progress clearing, and onboarding replay. Completion bypass marks an exercise complete only within the current in-memory run.
 
 ## Structure
 
 - `src/App.tsx`: workspace shell, hash navigation, studies/principle panels, progress and debug controls.
-- `src/components/CanvasWorkspace.tsx`: puzzle state, checking, selection, hints, action-based onboarding, and input orchestration.
+- `src/components/CanvasWorkspace.tsx`: puzzle state, checking, selection, hints, lesson dialogues, and input orchestration.
 - `src/components/Canvas.tsx`: bounded SVG frame, mouse dragging, touch selection, and keyboard input.
 - `src/components/ThumbController.tsx`: tap/hold directional controls with pointer capture and cancellation handling.
 - `src/components/Panel.tsx`, `Principle.tsx`: accessible modal panels and interactive lesson comparison.
 - `src/game/levels.ts`, `education.ts`: authored exercise and teaching content.
 - `src/game/validation.ts`, `guidance.ts`, `movement.ts`: deterministic rules, optional hint assistance, and shared position constraints.
-- `src/game/storage.ts`, `session.ts`: completion, resume, drafts, onboarding, and hash helpers.
+- `src/game/session.ts`: validated exercise hash helpers; no persistence.
 - `src/styles.css`, `workspace.css`: shared visual styling and responsive full-viewport application layout.
 
 ## Add or modify a level
@@ -90,3 +86,19 @@ Rotation and resizing controls are intentionally absent in v0.1: size and color 
 Controls use locally bundled Google Material Icons (Sharp, 24px), with visible text labels and decorative SVGs hidden from assistive technology. Original SVGs and the Apache-2.0 license are retained in `src/assets/material-icons`; `src/components/Icon.tsx` contains their paths. Source: https://github.com/google/material-design-icons. No icon font, runtime download, or icon package is required.
 
 The page, lesson demonstration surface, and puzzle paper share a static procedural texture in `public/textures/paper-grain.svg`. Two seeded, seamless SVG noise layers supply fine grain and softer tonal variation at low opacity. The texture is a CSS background beneath the content; it adds no pointer target, overlay, animation, or JavaScript work during dragging. Adjust the SVG layer opacities to tune its strength and `--paper-texture` in `src/styles.css` to replace it.
+
+### Sensei dialogue illustrations
+
+Sensei has twenty independently authored SVG React components in `src/components/sensei`, based on the artwork in `kompo-sensei`. Each pose exports its own reaction settings. The `Sensei` wrapper runs one scoped GSAP entrance/reaction per dialogue event and leaves the illustration still afterward; reduced-motion preferences show the static pose immediately. There are no idle loops or pose morphs.
+
+Lesson introductions use teaching; hints use thoughtful; corrections use patient or compassionate; success uses encouraging or amused. The other illustrations are available for future authored dialogue moments. Dialogue content and validation remain deterministic.
+
+During development, open `/?sensei-gallery` to review all twenty illustrations and replay their reactions. The gallery is disabled in production. To add or change a dialogue reaction, choose a pose and supply a dialogue key that changes only when a new message is evoked.
+
+Sensei dialogue events include patient first corrections, an optional hint after repeated unsuccessful checks, and recovery-aware success. Newly completed studies and the full course get distinct celebrations based on current-run progress, including exercises completed out of order. Replaying completed exercises does not re-award those milestones. Principle explanations include a character-led visual observation.
+
+After 60 seconds on a quiet canvas, Sensei offers a clue once per exercise visit. Interaction restarts the timer; guidance, feedback, open panels, hidden tabs, and completed exercises suppress the offer. Hints remain opt-in. Reduced motion and one-shot reactions apply to all these dialogues.
+
+Sensei uses a large portrait and nameplate in a centered native modal dialogue. Dialogues block background input, trap focus, support Escape and outside-click dismissal, and scroll independently on small screens. Closing them restores the unchanged workspace frame; speech never competes with the controller for space.
+
+Reactions have an arrival, gesture, hold, and settle, lasting about 1.95 seconds for teaching/correction and 2.3 seconds for celebration. Text and actions remain immediately available. Each sequence plays once per dialogue event and respects reduced motion.
