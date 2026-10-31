@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 48 192 192">
+  <title>Kompo Sensei</title>
+  <rect x="32" y="48" width="192" height="192" rx="24" fill="#F4E5C5"/>
+  <path d="M84 57h87l44 174H40Z" fill="#191918"/>
+  <path d="M89 64h77l36 152H55Z" fill="#F4E5C5"/>
+  <path d="m82 216 25-54 20 54m10 0 24-57 30 57Z" fill="#C9BEA3"/>
+  <path d="m110 166 17 69h10l14-69Z" fill="#F4E5C5"/>
+  <path d="m67 53 49 35-18 29-53-26Zm76 35 48-35 24 38-53 26Z" fill="#191918"/>
+  <path d="M77 126q14 25 28 0m46 0q14 25 28 0" fill="none" stroke="#191918" stroke-width="8"/>
+  <circle cx="128" cy="144" r="16" fill="#D82E25"/>
+  <path d="M113 171h31" stroke="#191918" stroke-width="8"/>
+</svg>

@@ -45,7 +45,6 @@ export function SenseiDialogue({
       >
         <Sensei pose={pose} dialogueKey={dialogueKey} />
         <div className="sensei-speech-copy">
-          <span className="sensei-name">Sensei</span>
           <button
             className="canvas-dismiss"
             onClick={onClose}

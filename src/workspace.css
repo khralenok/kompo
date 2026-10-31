@@ -752,7 +752,6 @@ body {
   margin-top: 100px;
   padding: 26px 28px 26px 228px;
   border: 1px solid var(--border-strong);
-  border-top: 3px solid var(--text-link);
   border-radius: 6px;
   background: var(--bg-surface-raised);
   box-shadow: var(--shadow-lg);
@@ -769,18 +768,6 @@ body {
 }
 .sensei-speech-copy {
   position: relative;
-}
-.sensei-name {
-  display: block;
-  width: fit-content;
-  padding: 3px 10px;
-  margin-bottom: 14px;
-  font-family: "Alumni Sans", sans-serif;
-  font-size: 24px;
-  font-weight: 900;
-  line-height: 1;
-  background: var(--text-link);
-  color: white;
 }
 .sensei-speech .canvas-dismiss {
   position: absolute;
